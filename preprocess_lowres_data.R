@@ -144,7 +144,15 @@ save(list=c('xs','ys','ts'), file = paste0(outdir,'lion_xy_15min_level0.RData'))
 save(list=c('lats','lons','ts'), file = paste0(outdir,'lion_latlon_15min_level0.RData'))  
 
 #TODO metadata
-
+setwd(metadatadir)
+lion_ids <- read.csv("lion_ids.csv", header = F)
+colnames(lion_ids) <- c("name", "tag_id", "age", "sex")
+lion_ids$color <- '#0000FF'
+lion_ids$color[which(lion_ids$age == 'Adult' & lion_ids$sex == 'Female')] <- '#FF0000'
+lion_ids$color[which(lion_ids$age == 'Sub-adult' & lion_ids$sex == 'Female')] <- '#FFAA66'
+lion_ids$color[which(lion_ids$age == 'Sub-adult' & lion_ids$sex == 'Male')] <- '#66AAFF'
+lion_ids$color[which(lion_ids$age == 'Juvenile')] <- '#666666'
+save(lion_ids, file = paste0(outdir, 'lion_ids.RData'))
 
 
 
