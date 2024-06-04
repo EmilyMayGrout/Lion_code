@@ -91,7 +91,7 @@ dev.off()
 
 #looking at which individuals split with one another
 
-R = 50000
+R = 100
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
 ff_net <- matrix(NA, nrow = n_inds, ncol = n_inds)
@@ -113,7 +113,7 @@ diag(ff_net) <- NA
 new_order <- c(1:3,5,4,6)
 ffnet_reorder <- ff_net[new_order, new_order]
 
-png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir,'subgroup_network_50000m.png'))
+png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir,'subgroup_network_100m.png'))
 
 visualize_network_matrix_trago(ffnet_reorder, lion_ids[new_order,])
 dev.off()
@@ -144,7 +144,7 @@ sd(each_sum$prop)
 
 #what is the absolute diadic distance of the group when the group is together
 #saying "together" is when they're 100m from one another
-R = 20
+R = 10
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
 #find index for when there is only 1 subgroup
@@ -162,7 +162,7 @@ within_group_data <- get_proximity_data(subset_x, subset_y, 3)
 new_order <- c(1:3,5,4,6)
 ffnet_reorder <- ff_net[new_order, new_order]
 
-png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir,'within_20m_subgroup_network_3m.png'))
+png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir,'within_10m_subgroup_network_3m.png'))
 visualize_network_matrix_trago(within_group_data$proximity_net, lion_ids[new_order,])
 dev.off()
 
@@ -415,6 +415,137 @@ ggplot(filtered_split_merge_df[filtered_split_merge_df$event == "split",], aes(x
 
 #I'm not sure the dyadic distances are correct here, so need to make gganimate plots for each event to see what's happening.... especially for the merges which have a huge dyadic distance e.g on 2023-11-07 17:45:00
 #could be GPS error! for i = 333 (same as time written here)
+
+#plotting each dyadic distance over time
+
+
+# Convert matrices to data frames for easier handling
+xs_df <- as.data.frame(xs)
+ys_df <- as.data.frame(ys)
+
+colnames(xs_df) <- ts
+colnames(ys_df) <- ts
+
+
+# Add an 'Individual' column
+xs_df$Individual <- 1:nrow(xs_df)
+ys_df$Individual <- 1:nrow(ys_df)
+
+# Convert to long format
+xs_long <- xs_df %>%
+  pivot_longer(cols = -Individual, names_to = "Time", values_to = "X_UTM") 
+ys_long <- ys_df %>%
+  pivot_longer(cols = -Individual, names_to = "Time", values_to = "Y_UTM") 
+
+# Merge the long data frames
+utm_long <- xs_long %>%
+  inner_join(ys_long, by = c("Individual", "Time"))
+
+# Function to calculate dyadic distances
+calculate_dyadic_distances <- function(data) {
+  distances <- data %>%
+    inner_join(data, by = "Time", suffix = c(".1", ".2")) %>%
+    filter(Individual.1 < Individual.2) %>%
+    mutate(Distance = sqrt((X_UTM.1 - X_UTM.2)^2 + (Y_UTM.1 - Y_UTM.2)^2)) %>%
+    select(Time, Individual.1, Individual.2, Distance)
+  
+  return(distances)
+}
+
+# Calculate dyadic distances
+dyadic_distances <- calculate_dyadic_distances(utm_long)
+
+# Function to generate pairwise data frame for a specific individual
+generate_distance_df <- function(individual_id) {
+  individual_data <- dyadic_distances %>%
+    filter(Individual.1 == individual_id | Individual.2 == individual_id) %>%
+    mutate(Other_Individual = if_else(Individual.1 == individual_id, Individual.2, Individual.1)) %>%
+    select(Time, Other_Individual, Distance) %>%
+    mutate(Focal_Individual = individual_id)
+  
+  return(individual_data)
+}
+
+# Generate distance data for all individuals
+distance_data_list <- lapply(1:nrow(xs), generate_distance_df)
+
+# Combine all distance data into one data frame
+combined_distance_data <- bind_rows(distance_data_list)
+
+# Replace ID numbers with actual names
+combined_distance_data$Focal_Individual <- lion_ids$name[combined_distance_data$Focal_Individual]
+combined_distance_data$Other_Individual <- lion_ids$name[combined_distance_data$Other_Individual]
+
+# Fill missing data using linear interpolation and carry forward/backward for leading/trailing NAs
+combined_distance_data <- combined_distance_data %>%
+  group_by(Focal_Individual, Other_Individual) %>%
+  mutate(Distance = zoo::na.locf(zoo::na.locf(zoo::na.approx(Distance, na.rm = FALSE), na.rm = FALSE), fromLast = TRUE)) %>%
+  ungroup()
+
+# Define the window size for the rolling mean
+window_size <- 300
+
+# Add a new column for the rolling mean, calculating it for each dyad separately
+combined_distance_data <- combined_distance_data %>%
+  group_by(Focal_Individual, Other_Individual) %>%
+  mutate(Rolling_Mean_Distance = zoo::rollmean(Distance, k = window_size, fill = NA, align = "center")) %>%
+  ungroup()
+
+# Plotting function for individual dyadic distances
+plot_individual_distances <- function(individual_id, data) {
+  individual_plot_data <- data %>%
+    filter(Focal_Individual == individual_id) %>%
+    mutate(Time = as.POSIXct(Time))  # Ensure Time column is in POSIXct format
+  
+  # Get unique individuals for consistent colors
+  unique_individuals <- unique(individual_plot_data$Other_Individual)
+  # Generate colors for each unique individual
+  colors <- rainbow(length(unique_individuals))
+  # Create a named vector with colors for each individual
+  color_mapping <- setNames(colors, unique_individuals)
+  
+  ggplot(individual_plot_data, aes(x = Time, y = Distance)) +
+    geom_line(aes(color = Other_Individual, group = Other_Individual), size = 0.8, alpha = 0.8) +
+    geom_line(aes(x = Time, y = Rolling_Mean_Distance, color = Other_Individual, group = Other_Individual), size = 6, alpha = 0.3) +
+    scale_color_manual(values = color_mapping) +
+    labs(title = paste("Dyadic Distances for Individual", individual_id),
+         x = "Time",
+         y = "Distance (meters)",
+         colour = "Other Individual") +
+    theme_classic() +
+    theme(axis.text.y = element_text(size = 12),
+          axis.ticks.y = element_blank(),
+          legend.position = "bottom") +
+    scale_x_datetime(date_breaks = "2 weeks", date_labels = "%Y-%m-%d") # Adjust the datetime scale
+}
+
+# Example usage
+individual_id <- "Sarabi"
+plot_individual_distances(individual_id, combined_distance_data)
+
+# Loop through each individual and generate plots
+individual_ids <- unique(combined_distance_data$Focal_Individual)
+for (individual_id in individual_ids) {
+  plot <- plot_individual_distances(individual_id, combined_distance_data)
+  ggsave(filename = paste0("Dyadic_Distances_", individual_id, ".png"), plot = plot, width = 10, height = 6)
+}
+
+plot_individual_distances(individual_id, combined_distance_data)
+
+# Example of how to filter and plot for one individual
+individual_id <- "Sarabi"
+individual_id <- "Kiara"
+individual_id <- "Nala"
+
+
+# Loop through each individual and save it
+for (individual_id in unique(combined_distance_data$Focal_Individual)) {
+  # Create the plot for the current individual
+  plot <- plot_individual_distances(individual_id, combined_distance_data)
+  ggsave(filename = paste0(plot_dir, "individual_", individual_id, "_distance_plot.png"), plot, width = 20, height = 6, units = "in")
+  
+}
+
 
 
 
