@@ -5,7 +5,7 @@
 #4. how far do they travel apart?
 #5. how often do they come together?
 
-
+#NATALIA'S TEST CHANGE 
 #--------PARAMS-------
 data_dir <- "C:/Users/egrout/Dropbox/lion/data/processed/"
 code_dir <- 'C:/Users/egrout/Dropbox/lion/Lion_code/'
