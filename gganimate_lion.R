@@ -1,8 +1,9 @@
 #making animations of the lions movements
 
 
+
 #--------PARAMS-------
-plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level0/movement_tracks/'
+plot_dir <- '../results/level0/movement_tracks/'
 
 
 # libraries
@@ -17,7 +18,7 @@ library(ggspatial)
 
 #csv downloaded from movebank, only gps, includes 
 
-lion <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/lion_highres.csv")
+lion <- read.csv("../data/raw/lion_highres.csv")
 
 lion$datetime <- as.POSIXct(x = lion$timestamp, tz = 'UTC', format = "%Y-%m-%d %H:%M:%S")
 
@@ -58,7 +59,6 @@ point_colors <- c('#1f78b4','#b2df8a','#33a02c','#fb9a99','#fdbf6f','#ff7f00')  
 #add google map under the points
 #register_google(key="xxx")
 has_google_key()
-
 
 map = get_map(location = c(lon = mean(lion_timespan$location.long), lat= mean(lion_timespan$location.lat)), zoom=11, maptype="satellite")
 

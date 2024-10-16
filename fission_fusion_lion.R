@@ -7,12 +7,9 @@
 
 
 #--------PARAMS-------
-data_dir <- "C:/Users/egrout/Dropbox/lion/data/processed/"
-code_dir <- 'C:/Users/egrout/Dropbox/lion/Lion_code/'
-coati_dir <- 'C:/Users/egrout/Dropbox/coatithon/coatithon_code/'
-plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level0/'
-gps_file <- "lion_xy_15min_level0.RData" #level0 is when Venus is not removed
-id_file <- 'lion_ids.RData'
+data_dir <- "../data/processed/"
+code_dir <- '/lion/Lion_code/'
+plot_dir <- '../results/level0/'
 
 #-------SETUP-------
 
@@ -30,13 +27,11 @@ library(plotly)
 library(patchwork)
 
 #read in library of functions
-setwd(coati_dir)
 source('coati_function_library.R')
 
 #load data
-setwd(data_dir)
-load(gps_file)
-load(id_file)
+load("../data/processed/lion_xy_15min_level0.RData")
+load("../data/processed/lion_ids.RData")
 
 
 #-----FUNCTIONS----
