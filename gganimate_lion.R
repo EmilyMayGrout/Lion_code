@@ -94,7 +94,7 @@ anim_save(paste0(plot_dir, "lion.mp4"), lion_vid)
 
 # Create the plot for each day without the map background and following the trajectories of the individuals
 
-for (i in seq(1, length(unique_dates), by = 1)) {
+for (i in seq(122, length(unique_dates), by = 1)) {
   start_date <- unique_dates[i]
   end_date <- unique_dates[min(i+1, length(unique_dates))]
   

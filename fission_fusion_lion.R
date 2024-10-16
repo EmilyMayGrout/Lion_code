@@ -547,5 +547,14 @@ for (individual_id in unique(combined_distance_data$Focal_Individual)) {
 }
 
 
+#add these to doc - all data, do for 0-100, log of overall
+#add speed color to plot - are they resting when 10m apart?
+ggplot(combined_distance_data, aes(Distance))+
+  geom_histogram()+
+  facet_wrap(~Focal_Individual)+
+  xlim(0, 1000)
 
+
+
+hist(combined_distance_data$Distance, breaks = 100000, xlim = c(0, 100))
 
