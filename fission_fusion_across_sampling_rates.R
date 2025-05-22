@@ -11,129 +11,6 @@
 #2hrs
 #4hrs
 
-#----------FUNCTIONS------------------------------------------------------------------------
-
-mode <- function(x) {
-  return(as.numeric(names(which.max(table(x)))))
-}
-
-
-subsample_matrix <- function(matrix, ts, interval) {
-  # Convert the interval to seconds
-  interval_seconds <- as.numeric(difftime(as.POSIXct(interval, format="%H:%M:%S"), as.POSIXct("00:00:00", format="%H:%M:%S"), units = "secs"))
-  
-  # Find the indices of the time points that match the interval
-  subsample_indices <- seq(1, length(ts), by = interval_seconds / (15 * 60))
-  
-  # Subsample the matrix and the time vector
-  subsampled_matrix <- matrix[, subsample_indices, drop = FALSE]
-  subsampled_ts <- ts[subsample_indices]
-  
-  return(list(subsampled_matrix = subsampled_matrix, subsampled_ts = subsampled_ts, subsample_indices = subsample_indices))
-}
-
-
-# Function to subsample the matrix at midday
-subsample_matrix_midday <- function(matrix, ts) {
-  # Convert the time vector to Date and Time components
-  dates <- as.Date(ts)
-  times <- format(ts, "%H:%M:%S")
-  
-  # Find the indices of the time points that match midday (12:00:00)
-  midday_indices <- which(times == "12:00:00")
-  
-  # Subsample the matrix and the time vector
-  subsampled_matrix <- matrix[, midday_indices, drop = FALSE]
-  subsampled_ts <- ts[midday_indices]
-  
-  return(list(
-    subsampled_matrix = subsampled_matrix,
-    subsampled_ts = subsampled_ts,
-    original_ts = ts,
-    subsample_indices = midday_indices
-  ))
-}
-
-# Function to subsample the matrix every 14 days at midday
-subsample_matrix_14days_midday <- function(matrix, ts) {
-  # Convert the time vector to Date and Time components
-  dates <- as.Date(ts)
-  times <- format(ts, "%H:%M:%S")
-  
-  # Find the indices of the time points that match midday (12:00:00)
-  midday_indices <- which(times == "12:00:00")
-  
-  # Filter the dates to get every 7th day
-  unique_dates <- unique(dates[midday_indices])
-  selected_dates <- unique_dates[seq(1, length(unique_dates), by = 14)]
-  
-  # Find the indices that match the selected dates
-  selected_indices <- which(dates %in% selected_dates & times == "12:00:00")
-  
-  # Subsample the matrix and the time vector
-  subsampled_matrix <- matrix[, selected_indices, drop = FALSE]
-  subsampled_ts <- ts[selected_indices]
-  
-  return(list(
-    subsampled_matrix = subsampled_matrix,
-    subsampled_ts = subsampled_ts,
-    original_ts = ts,
-    subsample_indices = selected_indices
-  ))
-}
-
-# Function to subsample the matrix every N days at midday
-subsample_matrix_ndays_midday <- function(matrix, ts, n_days) {
-  # Convert the time vector to Date and Time components
-  dates <- as.Date(ts)
-  times <- format(ts, "%H:%M:%S")
-  
-  # Find the indices of the time points that match midday (12:00:00)
-  midday_indices <- which(times == "12:00:00")
-  
-  # Filter the dates to get every Nth day
-  unique_dates <- unique(dates[midday_indices])
-  selected_dates <- unique_dates[seq(1, length(unique_dates), by = n_days)]
-  
-  # Find the indices that match the selected dates
-  selected_indices <- which(dates %in% selected_dates & times == "12:00:00")
-  
-  # Subsample the matrix and the time vector
-  subsampled_matrix <- matrix[, selected_indices, drop = FALSE]
-  subsampled_ts <- ts[selected_indices]
-  
-  return(list(
-    subsampled_matrix = subsampled_matrix,
-    subsampled_ts = subsampled_ts,
-    original_ts = ts,
-    subsample_indices = selected_indices
-  ))
-}
-
-
-# Function to extract hours from the file name
-extract_hours <- function(file_name) {
-  # Extract the time part using regular expressions
-  time_part <- sub("subsampled_matrix_(\\d+_\\d+_\\d+).*", "\\1", file_name)
-  
-  # Check if the time part is in the format "HH_MM_SS"
-  if (grepl("^\\d+_\\d+_\\d+$", time_part)) {
-    # Split the time part into hours, minutes, and seconds
-    time_parts <- as.numeric(unlist(strsplit(time_part, "_")))
-    hours <- time_parts[1] + time_parts[2] / 60 + time_parts[3] / 3600
-  } else if (grepl("(\\d+)days_midday", file_name)) {
-    # Extract the number of days and convert to hours
-    days <- as.numeric(sub(".*_(\\d+)days_midday", "\\1", file_name))
-    hours <- days * 24
-  } else {
-    hours <- NA
-  }
-  
-  return(hours)
-}
-
-
-
 #----------------------------------------------------------------------------------------------
 
 #Do we want to go down to even one fix per day? Either at midday when typically resting, or midnight when typically more likely to be active
@@ -146,7 +23,7 @@ data_dir <- "C:/Users/egrout/Dropbox/lion/data/processed/"
 code_dir <- 'C:/Users/egrout/Dropbox/lion/Lion_code/'
 coati_dir <- 'C:/Users/egrout/Dropbox/coatithon/coatithon_code/'
 plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level0/'
-gps_file <- "lion_xy_15min_level0.RData" #level0 is when Venus is not removed
+gps_file <- "lion_xy_15min_level0_2yr.RData" #level0 is when Venus is not removed
 id_file <- 'lion_ids.RData'
 
 #-------SETUP-------
@@ -164,22 +41,18 @@ library(vioplot)
 library(plotly)
 library(patchwork)
 library(ggpmisc)
+library(cocomo)
+library(reshape2)
 
 #read in library of functions
-setwd(coati_dir)
+setwd(code_dir)
 source('coati_function_library.R')
+source('lion_functions.R')
 
 #load data
 setwd(data_dir)
 load(gps_file)
 load(id_file)
-
-
-#-----FUNCTIONS----
-mode <- function(x) {
-  return(as.numeric(names(which.max(table(x)))))
-}
-
 
 #-----MAIN------
 
@@ -193,49 +66,244 @@ n_tracked <- colSums(!is.na(xs))
 #indexes to time points where all individuals were tracked
 all_tracked_idxs <- which(n_tracked==n_inds)
 
+#removing data when sample regime went from 15 mins to 2 hours
+non_na_counts <- colSums(!is.na(xs))
+drops <- which(diff(non_na_counts) < -4)
+xs <- xs[,1:drops[1]]
+ys <- ys[,1:drops[1]]
+ts <- ts[1:drops[1]]
 
 R = 100
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
 ind_subgroup_membership <- subgroup_data$ind_subgroup_membership
 
-#---------------------------------------------------------------------------------------------------
+#----------------------------------------------------------------
+
+#------RANDOMISE WHEN START SAMPLES ARE TAKEN--------------------
+
+
 
 #GET SAMPLING REGIMES:
 
-# Create a list to store the results
-subsampled_results <- list()
-
-# Assuming ind_subgroup_membership is your matrix and ts is your time vector
 intervals <- c("00:15:00", "00:30:00", "01:00:00", "02:00:00", "04:00:00", "12:00:00")
 
-# Subsample the matrix at different intervals
-for (interval in intervals) {
-  result <- subsample_matrix(ind_subgroup_membership, ts, interval)
-  matrix_name <- paste0("subsampled_matrix_", gsub(":", "_", interval))
-  subsampled_results[[matrix_name]] <- list(
-    matrix = result$subsampled_matrix,
-    subsampled_ts = result$subsampled_ts,
-    original_ts = result$original_ts,
-    subsample_indices = result$subsample_indices
-  )
+subsampled_time_results <- subsample_multiple_intervals(ind_subgroup_membership, ts, intervals)
+
+day_intervals <- c(1, 2, 3, 6, 9, 12, 15, 20, 30, 60, 90)
+
+subsampled_day_results <- subsample_multiple_day_intervals(ind_subgroup_membership, ts, day_intervals)
+
+subsampled_results <- c(subsampled_time_results, subsampled_day_results)
+
+
+run_this <- F
+
+if(run_this == T){
+
+#get list of subsample results by randomising the start time of extracting
+
+# Prepare a data frame to collect split event counts
+n_offsets <- 96  # 15-minute intervals in 24 hours
+
+intervals <- c("00:15:00", "00:30:00", "01:00:00", "02:00:00", "04:00:00", "12:00:00")
+
+
+# Initialize data frames to store split and merge counts
+split_events_all <- data.frame(matrix(nrow = n_offsets, ncol = length(intervals)))
+merge_events_all <- data.frame(matrix(nrow = n_offsets, ncol = length(intervals)))
+colnames(split_events_all) <- intervals
+colnames(merge_events_all) <- intervals
+
+for (n in 1:n_offsets) {
+  ind_subgroup_membership_cut <- ind_subgroup_membership[, n:ncol(ind_subgroup_membership)]
+  ts_cut <- ts[n:length(ts)]
+  
+  subsampled_time_results_cut <- subsample_multiple_intervals(ind_subgroup_membership_cut, ts_cut, intervals)
+  
+  # Detect events
+  split_list <- detect_splits_across_sample_rates(subsampled_time_results_cut, include_singletons = F)
+  merge_list <- detect_merges_across_sample_rates(subsampled_time_results_cut, include_singletons = F)
+  
+  # Store counts
+  split_events_all[n, ] <- sapply(split_list, nrow)
+  merge_events_all[n, ] <- sapply(merge_list, nrow)
+  
+  print(paste("Offset", n, "done"))
 }
-# Assuming ind_subgroup_membership is your matrix and ts is your time vector
-day_intervals <- c(1, 2, 3, 6, 9, 12, 15, 20)
 
-# Subsample the matrix every N days at midday
-for (n_days in day_intervals) {
-  result_ndays_midday <- subsample_matrix_ndays_midday(ind_subgroup_membership, ts, n_days)
-  matrix_name <- paste0("subsampled_matrix_", n_days, "days_midday")
-  subsampled_results[[matrix_name]] <- list(
-    matrix = result_ndays_midday$subsampled_matrix,
-    subsampled_ts = result_ndays_midday$subsampled_ts,
-    original_ts = result_ndays_midday$original_ts,
-    subsample_indices = result_ndays_midday$subsample_indices
-  )
+
+# Add identifiers
+split_events_all$offset <- 1:n_offsets
+merge_events_all$offset <- 1:n_offsets
+
+# Reshape to long format
+split_long <- melt(split_events_all, id.vars = "offset", variable.name = "interval", value.name = "n_events")
+merge_long <- melt(merge_events_all, id.vars = "offset", variable.name = "interval", value.name = "n_events")
+
+split_long$event_type <- "split"
+merge_long$event_type <- "merge"
+
+split_merge_time_offset <- rbind(split_long, merge_long)
+
+}
+
+#save(split_merge_time_offset,split_events_all, merge_events_all, file = paste0(data_dir, "time_offset_split_merge.Rdata"))
+
+#save(split_merge_time_offset,split_events_all, merge_events_all, file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
+
+#load(file = paste0(data_dir, "time_offset_split_merge.Rdata"))
+#load(file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
+
+
+# Plot
+g0 <- ggplot(split_merge_time_offset, aes(x = offset, y = n_events, color = interval)) +
+  geom_line() +
+  facet_wrap(~event_type, scales = "free_y") +
+  labs(title = "Variation in Detected Splits and Merges by Sampling Offset",
+       x = "15-min Start Offset",
+       y = "Number of Events")+
+  theme_classic()
+
+#ggsave(filename = paste0(plot_dir, 'samplingrate_offset_2yr.png'), plot = g0, width = 10, height = 5, dpi = 300)
+
+
+#randomise start day for multiple day extraction - change start date across one month
+
+
+if(run_this == T){
+
+day_shifts <- 0:29  # Simulate 30 different days
+
+day_intervals <- c(1: 7, 14, 20, 30, 60, 90)
+
+
+# Initialize storage for daily shift results
+split_events_by_day <- data.frame(matrix(nrow = length(day_shifts), ncol = length(day_intervals)))
+merge_events_by_day <- data.frame(matrix(nrow = length(day_shifts), ncol = length(day_intervals)))
+colnames(split_events_by_day) <- day_intervals
+colnames(merge_events_by_day) <- day_intervals
+
+# Find all midday indices in ts
+midday_indices <- which(format(ts, "%H:%M:%S") == "12:00:00")
+
+for (i in seq_along(day_shifts)) {
+  start_index <- midday_indices[day_shifts[i] + 1]
+  if (is.na(start_index)) next
+  
+  ind_subgroup_membership_day <- ind_subgroup_membership[, start_index:ncol(ind_subgroup_membership)]
+  ts_day <- ts[start_index:length(ts)]
+  
+  subsampled_day_results <- subsample_multiple_day_intervals(ind_subgroup_membership_day, ts_day, day_intervals)
+  
+  split_list_day <- detect_splits_across_sample_rates(subsampled_day_results, include_singletons = F)
+  merge_list_day <- detect_merges_across_sample_rates(subsampled_day_results, include_singletons = F)
+  
+  split_events_by_day[i, ] <- sapply(split_list_day, nrow)
+  merge_events_by_day[i, ] <- sapply(merge_list_day, nrow)
+  
+  print(paste("Day shift", i, "done"))
 }
 
 
+
+# Add a column for day offset
+split_events_by_day$day_shift <- 0:(nrow(split_events_by_day) - 1)
+merge_events_by_day$day_shift <- 0:(nrow(merge_events_by_day) - 1)
+
+# Convert to long format
+split_day_long <- melt(split_events_by_day, id.vars = "day_shift", 
+                       variable.name = "interval", value.name = "n_events")
+merge_day_long <- melt(merge_events_by_day, id.vars = "day_shift", 
+                       variable.name = "interval", value.name = "n_events")
+
+# Label event type
+split_day_long$event_type <- "split"
+merge_day_long$event_type <- "merge"
+
+# Combine both
+split_merge_day_offset <- rbind(split_day_long, merge_day_long)
+
+}
+
+
+#save(split_merge_day_offset, split_events_by_day, merge_events_by_day, file = paste0(data_dir, "day_offset_split_merge.Rdata"))
+
+#save(split_merge_day_offset, split_events_by_day, merge_events_by_day, file = paste0(data_dir, "day_offset_split_merge_no_singletons.Rdata"))
+
+Singletons <- T
+
+if(Singletons == T){
+
+load(file = paste0(data_dir, "time_offset_split_merge.Rdata"))
+load(file = paste0(data_dir, "day_offset_split_merge.Rdata"))
+title <- "Variation in Detected Splits and Merges by Start Day with Singletons"
+title2 <- "Distribution of Split and Merge Events by Sampling Interval - With Singleton Events"
+filename <- 'sampling_interval_splitsmerges_withsingles_2yr.png'
+
+}else{
+ 
+load(file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
+load(file = paste0(data_dir, "day_offset_split_merge_no_singletons.Rdata"))
+title <- "Variation in Detected Splits and Merges by Start Day without Singletons"
+title2 <- "Distribution of Split and Merge Events by Sampling Interval - Without Singleton Events"
+filename <- 'sampling_interval_splitsmerges_withoutsingles_2yr.png'
+}
+
+
+gg0 <- ggplot(split_merge_day_offset, aes(x = day_shift, y = n_events, color = interval)) +
+  geom_line() +
+  facet_wrap(~event_type, scales = "free_y") +
+  labs(
+    title = title,
+    x = "Day Offset",
+    y = "Number of Events"
+  ) +
+  theme_classic()
+
+#ggsave(filename = paste0(plot_dir, 'samplingrate_day_offset_2yr.png'), plot = gg0, width = 10, height = 5, dpi = 300)
+
+split_merge_day_offset$offset_type <- "day"
+split_merge_time_offset$offset_type <- "time"
+
+# Convert interval to character if it's still a factor, for better control over x-axis
+split_merge_day_offset$interval <- as.numeric(levels(split_merge_day_offset$interval))[split_merge_day_offset$interval]
+split_merge_day_offset$event_type <- as.factor(split_merge_day_offset$event_type)
+
+split_merge_time_offset$interval <- as_hms(as.character(split_merge_time_offset$interval))
+split_merge_time_offset$event_type <- as.factor(split_merge_time_offset$event_type)
+
+
+# Create the boxplot
+f1 <- ggplot(split_merge_day_offset, aes(x = interval, y = n_events, fill = event_type, group = interaction(interval, event_type))) +
+  geom_boxplot(outlier.shape = NA, size = 0.2, lwd = 0.1, width = 2, alpha = 0.7, position = position_dodge(width = 3)) +
+  scale_fill_manual(values=c("gold", "slateblue2")) +
+  labs(
+   x = "Sampling Interval (days)",
+    y = "Number of Events",
+    fill = "Event Type"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(legend.position = "right")
+
+
+f2 <- ggplot(split_merge_time_offset, aes(x = interval, y = n_events, fill = event_type, group = interaction(interval, event_type))) +
+  geom_boxplot(outlier.shape = NA, width = 1500, lwd = 0.1, alpha = 0.7, position = position_dodge(width = 1500)) + 
+  scale_fill_manual(values=c("gold", "slateblue2")) +
+  labs(
+    title = title2,
+    x = "Sampling Interval (hour)",
+    y = "Number of Events",
+    fill = "Event Type"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(legend.position = "none")
+
+f <- f2+f1
+
+f
+
+ggsave(filename = paste0(plot_dir, filename), plot = f, width = 12, height = 5, dpi = 300)
 
 #---------------------------------------------------------------------------------------------------
 
@@ -275,299 +343,38 @@ for (name in element_names) {
   ffnet_reorder <- ff_net[new_order, new_order]
   
   # Save the plot with the correct title
-  png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir, name, '_subgroup_network_100m.png'))
+  png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir, name, '_subgroup_network_100m_2yr.png'))
   
   visualize_network_matrix_trago(ffnet_reorder, lion_ids[new_order,])
   
   dev.off()  # Close the PNG device
 }
 
-
-
-
-#get splits and merges (code copied from lion_split_merge_dfs.R)
-
 #-----SPLITS---------
 
-# Initialize split_list_samplingrates to store all splits data frames
-split_list_samplingrates <- list()
 
-# Get the names of the elements in the list
-element_names <- names(subsampled_results)
-
-for (name in element_names) {
-  
-  samplerate <- subsampled_results[[name]]
-  
-  # Initialize splits vector
-  splits <- c()
-  
-  n_times_cut <- ncol(samplerate$matrix)
-  
-  # Run through time by time and check if each time is a split
-  for (t in 1:(n_times_cut - 1)) {
-    
-    # Get subgroup membership now and later
-    subgroups_now <- samplerate$matrix[, t]
-    subgroups_later <- samplerate$matrix[, t + 1]
-   
-    # If we have a time of completely NAs, pass
-    if (sum(!is.na(subgroups_now)) == 0 | sum(!is.na(subgroups_later)) == 0) {
-      next
-    }
-    
-    # Transfer NAs from now to later and later to now
-    subgroups_now[which(is.na(subgroups_later))] <- NA
-    subgroups_later[which(is.na(subgroups_now))] <- NA
-    
-    # Get number of subgroups now and in next time step (later)
-    n_subgroups_now <- length(unique(subgroups_now[!is.na(subgroups_now)]))
-    n_subgroups_later <- length(unique(subgroups_later[!is.na(subgroups_later)]))
-    
-    # Determine if this time step is a split - include cases where singletons leave
-    if ((n_subgroups_now == 1) &
-        n_subgroups_later > n_subgroups_now) {
-      splits <- c(splits, t)
-    }
-  }
-  
-  # Make a data frame of splits, with original group and subgroups
-  splits_df <- data.frame(t = splits, orig_group = NA, sub1 = NA, sub2 = NA, sub3 = NA, sub4 = NA, sub5 = NA, subsample_indices = NA)
-  
-  for (i in 1:nrow(splits_df)) {
-    t <- splits_df$t[i]
-    subgroups_now <- samplerate$matrix[, t]
-    subgroups_later <- samplerate$matrix[, t + 1]
-    
-    # Transfer NAs from now to later and later to now so erroneous splits are not detected
-    subgroups_now[which(is.na(subgroups_later))] <- NA
-    subgroups_later[which(is.na(subgroups_now))] <- NA
-    
-    # Identify individuals whose subgroup ID has changed
-    changed_indices <- which(subgroups_now != subgroups_later)
-    group_id_changers <- subgroups_later[changed_indices]
-    prev_id_changers <- subgroups_now[changed_indices]
-    
-    # Put the IDs of the original subgroup into df
-    splits_df$orig_group[i] <- list(which(subgroups_now == prev_id_changers[1]))
-    
-    # Find the groups where the original members went
-    group_ids_later <- unique(subgroups_later[changed_indices])
-    
-    for (j in 1:length(group_ids_later)) {
-      group_id <- group_ids_later[j]
-      inds_in_group <- which(subgroups_later == group_id)
-      orig_inds_in_group <- intersect(inds_in_group, changed_indices) # Only count the original group members who changed
-      
-      # Put lists into a data frame
-      if (j == 1) {
-        splits_df$sub1[i] <- list(orig_inds_in_group)
-      }
-      if (j == 2) {
-        splits_df$sub2[i] <- list(orig_inds_in_group)
-      }
-      if (j == 3) {
-        splits_df$sub3[i] <- list(orig_inds_in_group)
-      }
-      if (j == 4) {
-        splits_df$sub4[i] <- list(orig_inds_in_group)
-      }
-      if (j == 5) {
-        splits_df$sub5[i] <- list(orig_inds_in_group)
-      }
-    }
-    # Add subsample indices
-    splits_df$subsample_indices[i] <- list(samplerate$subsample_indices[t + 1]) #so splits and merges aren't at the same time 
-  }
-  
-  # Number in each subgroup
-  splits_df$n_orig <- sapply(splits_df$orig_group, function(x) { return(sum(!is.na(x))) })
-  splits_df$n_sub1 <- sapply(splits_df$sub1, function(x) { return(sum(!is.na(x))) })
-  splits_df$n_sub2 <- sapply(splits_df$sub2, function(x) { return(sum(!is.na(x))) })
-  splits_df$n_sub3 <- sapply(splits_df$sub3, function(x) { return(sum(!is.na(x))) })
-  
-  # Append splits_df to split_list_samplingrates
-  split_list_samplingrates[[name]] <- splits_df
-  
-}
+split_list_samplingrates <- detect_splits(subsampled_results, include_singletons = T)
 
 #save list
-save(split_list_samplingrates, file = paste0(data_dir, "lion_merge_list.Rdata"))
+save(split_list_samplingrates, file = paste0(data_dir, "lion_split_list.Rdata"))
 
 
 
 #--------MERGE------------------
 
-# Initialize merge_all to store all splits data frames
-merge_list_samplingrates <- list()
 
-# Get the names of the elements in the list
-element_names <- names(subsampled_results)
-
-for (name in element_names) {
-  
-  samplerate <- subsampled_results[[name]]
-  
-  # Run through time by time and check if each time is a merge
-  merge <- c()
-  
-  n_times_cut <- ncol(samplerate$matrix)
-  
-  for (t in 2:n_times_cut) {  # Start from 2 to avoid negative index
-    
-    # Get subgroup membership now and previous
-    merge_group <- samplerate$matrix[, t]
-    subgroups_previously <- samplerate$matrix[, t - 1]
-    
-    # If we have a time of completely NAs, pass
-    if (sum(!is.na(merge_group)) == 0 | sum(!is.na(subgroups_previously)) == 0) {
-      next
-    }
-    
-    # Transfer NAs from now to later and later to now
-    merge_group[which(is.na(subgroups_previously))] <- NA
-    subgroups_previously[which(is.na(merge_group))] <- NA
-    
-    # Get number of subgroups now and in previous time step
-    n_merge_group <- length(unique(merge_group[!is.na(merge_group)]))
-    n_subgroups_previously <- length(unique(subgroups_previously[!is.na(subgroups_previously)]))
-    
-    # Determine if this time step is a merge
-    if (n_subgroups_previously > n_merge_group) {
-      merge <- c(merge, t)
-    }
-  }
-  
-  # Make a data frame of merges, with merged group and subgroups
-  merge_df <- data.frame(t = merge, merge_group = NA, sub1 = NA, sub2 = NA, sub3 = NA, sub4 = NA, sub5 = NA, subsample_indices = NA)
-  
-  for (i in 1:nrow(merge_df)) {
-    t <- merge_df$t[i]
-    merge_group <- samplerate$matrix[, t]
-    subgroups_previously <- samplerate$matrix[, t - 1]
-    
-    # Transfer NAs from now to later and later to now
-    merge_group[which(is.na(subgroups_previously))] <- NA
-    subgroups_previously[which(is.na(merge_group))] <- NA
-    
-    # Identify individuals whose subgroup ID has changed
-    changed_indices <- which(merge_group != subgroups_previously)
-    group_id_changers <- merge_group[changed_indices]
-    prev_id_changers <- subgroups_previously[changed_indices]
-    
-    # Put the IDs of the subgroup where the merge occurs into df
-    merge_df$merge_group[i] <- list(which(merge_group == group_id_changers[1]))
-    
-    # Find the groups where the original members were from
-    group_ids_before <- unique(subgroups_previously[changed_indices])
-    
-    for (j in 1:length(group_ids_before)) {
-      group_id <- group_ids_before[j]
-      inds_in_group <- which(subgroups_previously == group_id)
-      orig_inds_in_group <- intersect(inds_in_group, changed_indices) # Only count the original group members who changed
-      
-      # Put lists into a data frame
-      if (j == 1) {
-        merge_df$sub1[i] <- list(orig_inds_in_group)
-      }
-      if (j == 2) {
-        merge_df$sub2[i] <- list(orig_inds_in_group)
-      }
-      if (j == 3) {
-        merge_df$sub3[i] <- list(orig_inds_in_group)
-      }
-      if (j == 4) {
-        merge_df$sub4[i] <- list(orig_inds_in_group)
-      }
-      if (j == 5) {
-        merge_df$sub5[i] <- list(orig_inds_in_group)
-      }
-    }
-    # Add subsample indices
-    merge_df$subsample_indices[i] <- list(samplerate$subsample_indices[t])
-  }
-  
-  
-  # Number in each subgroup
-  merge_df$n_merge <- sapply(merge_df$merge_group, function(x) { return(sum(!is.na(x))) })
-  merge_df$n_sub1 <- sapply(merge_df$sub1, function(x) { return(sum(!is.na(x))) })
-  merge_df$n_sub2 <- sapply(merge_df$sub2, function(x) { return(sum(!is.na(x))) })
-  merge_df$n_sub3 <- sapply(merge_df$sub3, function(x) { return(sum(!is.na(x))) })
-  
-  # Append merge_df to list_all
-  merge_list_samplingrates[[name]] <- merge_df
-  
-}
+merge_list_samplingrates <- detect_merges(subsampled_results, include_singletons = T)
 
 #save list
 save(merge_list_samplingrates, file = paste0(data_dir, "lion_merge_list.Rdata"))
 
 
+
 #-------------------------------------------------------------------------
 
-# Initialize list to store time differences for each sampling rate
-time_diff_list <- list()
+#Get time difference from the last merge to the first split and from the first split to the next merge
 
-# Get the names of the elements in the list
-element_names <- names(split_list_samplingrates)
-
-for (n in element_names) {
-  
-  splits_df <- split_list_samplingrates[[n]]
-  merge_df <- merge_list_samplingrates[[n]]
-  
-  # Add event type to dataframes
-  merge_df$event <- "merge"
-  splits_df$event <- "split"
-  
-  # Subset relevant columns
-  merge_df_subset <- merge_df[, c("subsample_indices", "event")]
-  splits_df_subset <- splits_df[, c("subsample_indices", "event")]
-  
-  # Combine the data frames and ensure subsample_indices is numeric
-  time_diff <- rbind(splits_df_subset, merge_df_subset) %>%
-    mutate(subsample_indices = as.numeric(subsample_indices)) %>%
-    arrange(subsample_indices)
-  
- 
-  # Initialize keep columns
-  time_diff$keep <- 0
-  time_diff$keep2 <- 0
-  
-  # Mark rows to keep based on event sequence
-  # duration is from the last merge to the first split
-  # and from the first split to the next merge
-  for (i in 1:(nrow(time_diff) - 1)) {
-    if (time_diff$event[i] == "merge" & time_diff$event[i + 1] == "split") {
-      time_diff$keep[i] <- 1
-      time_diff$keep2[i + 1] <- 1
-    }
-  }
-  
-  # Filter rows to keep
-  time_diff$keep3 <- time_diff$keep + time_diff$keep2
-  time_diff <- time_diff[time_diff$keep3 == 1, c("subsample_indices", "event")]
-  
-  # Separate splits and merges
-  splits_time_diff <- time_diff[time_diff$event == "split", ]
-  merge_time_diff <- time_diff[time_diff$event == "merge", ]
-  
-  time_diff <- data.frame(cbind(splits_time_diff, merge_time_diff))
-  time_diff <- time_diff[,-c(2,4)]
-  colnames(time_diff) <- c("splits_t","merge_t")
-
-  # Calculate time differences
-  time_diff$diff <- as.numeric(time_diff$splits_t) - as.numeric(time_diff$merge_t)
-  time_diff$diff_time_hour <- (time_diff$diff * 10) / 60
-  time_diff$diff_time_hour <- format(round(time_diff$diff_time_hour, 1), nsmall = 1)
-  time_diff$diff_time_hour <- as.numeric(time_diff$diff_time_hour)
-  
-  # Store the result in the list - time differences between the last merge and the first split
-  time_diff_list[[n]] <- time_diff
-}
-
-
-
+time_diff_list <- compute_merge_split_time_differences(split_list_samplingrates, merge_list_samplingrates)
 
 # Get the names of the elements in the list
 element_names <- names(time_diff_list)
@@ -588,40 +395,68 @@ for (name in element_names) {
 
 #-----------------------------------------------------------------------
 
-#plot number of splits with changes in sampling effort
+#plot number of splits and merges accross sampling rates
 
-# Create a data frame to store the filenames and number of rows
-length_sampling_df <- data.frame(
-  filename = character(),
-  nrow = integer(),
+length_df <- data.frame(
+  filename = names(split_list_samplingrates),
+  Splits = sapply(split_list_samplingrates, nrow),
+  Merges = sapply(merge_list_samplingrates, nrow),
   stringsAsFactors = FALSE
 )
+rownames(length_df) <- NULL  # Remove row names
 
-# Populate the data frame
-for (name in names(split_list_samplingrates)) {
-  subsampled_matrix <- merge_list_samplingrates[[name]]
-  nrow_matrix <- nrow(subsampled_matrix)
-  
-  length_sampling_df <- rbind(length_sampling_df, data.frame(
-    filename = name,
-    nrow = nrow_matrix,
-    stringsAsFactors = FALSE
-  ))
-}
+#12 day period has 1 split observation, whereas there are 2 with day 15 and 30 intervals. This could be bias to the days chosen to pull from the data, so would be good to rerun these analyses with randomised start dates (to build a probability distribution) to see whether this affects the distribution of events captured (and will be more accurate representation)
+
 
 #adding sampling rate to dataframe
-length_sampling_df$sampling_rate <- c(15, 30, 60, 120, 240, 720, 1440,2880,4320,8640,12960,17280, 21600, 28800)
+length_df$sampling_rate <-  sapply(element_names, get_steps_skipped)
+
+# Convert the sampling rate to hours (assuming 15 minutes = 0.25 hours)
+length_df$sampling_days <- length_df$sampling_rate * 0.25 / 24
+length_df$sampling_hours <- length_df$sampling_rate * 0.25
 
 
-# Plot the data points and the exponential regression line
-ggplot(length_sampling_df, aes(sampling_rate, nrow)) +
-  geom_point() +  # Scatter plot
-  geom_line() +
-  theme_minimal()
+length_df_long <- pivot_longer(length_df, cols = c(Splits, Merges),
+                               names_to = "Event", values_to = "Count")
+
+# Plot
+g1 <- ggplot(length_df_long, aes(x = sampling_days, y = Count, color = Event)) +
+  geom_line(size = 1) +
+  geom_point(size = 3, alpha = 0.6) +
+  scale_x_continuous(breaks = seq(0, max(length_df_long$sampling_days), by = 7)) +
+  scale_color_manual(values = c("Splits" = "slateblue1", "Merges" = "orange1")) + # Custom colors
+  labs(x = "Sampling Rate (days)", y = "Count",
+       title = "Number of split and merges extracted across varying sampling rates") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+#zoom to less than 1 day
+g2 <- ggplot(length_df_long, aes(x = sampling_hours, y = Count, color = Event)) +
+  geom_line(size = 1) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_x_continuous(breaks = seq(0, max(length_df_long$sampling_hours), by = 10)) +
+  xlim(0, 24)+
+  scale_color_manual(values = c("Splits" = "slateblue1", "Merges" = "orange1")) + # Custom colors
+  labs(x = "Sampling Rate (hours)", y = "Count") +
+  theme_classic() 
+
+gg <- g1 + g2
+gg
+ggsave(filename = paste0(plot_dir, 'splitmerge_diffsamplingrates_withsingles_2yr.png'), plot = gg, width = 10, height = 5, dpi = 300)
+
+
+#look at distribution of subgroup sizes observed when sampling rate changes
+
+#extract the subgroup sizes from all data and then measure how the distribution of this changes for each subsampling regime
+
+
+
+
 
 
 #look at the number of individuals that split/merge - are larger subgroups more likely to split, and singles more likely to merge?
 
+#can't run this as split and merge events ignored single individuals... but can change it to look at this
 files <- names(merge_list_samplingrates)
 
 merge_output <- data.frame(files)

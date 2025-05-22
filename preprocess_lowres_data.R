@@ -7,9 +7,9 @@ library(tidyverse)
 
 
 #Directories
-indir <-"C:/Users/egrout/Dropbox/lion/data/raw/gps/"
-outdir <- "C:/Users/egrout/Dropbox/lion/data/processed/"
-metadatadir <-  "C:/Users/egrout/Dropbox/lion/data/raw/metadata/"
+indir <-"../data/raw/gps/"
+outdir <- "../data/processed/"
+metadatadir <-  "../data/raw/metadata/"
 
 setwd(indir)
 
@@ -31,8 +31,9 @@ lion_all <- lion_all[!lion_all$utm.zone == "33N",]
 
 #plot(lion_all$utm.easting, lion_all$utm.northing, col = as.character(lion_all$tag.local.identifier, type = "l"))
 
-#rounding the time to the nearest 15 mins
+#put time in posixct format
 lion_all$timestamp <- as.POSIXct(lion_all$timestamp, format = "%Y-%m-%d %H:%M:%OS", tz="UTC")
+
 
 #Need to read in csv and split into files for each individual and save as txt file into the indir
 

@@ -5,7 +5,7 @@ data_dir <- "C:/Users/egrout/Dropbox/lion/data/processed/"
 code_dir <- 'C:/Users/egrout/Dropbox/lion/Lion_code/'
 coati_dir <- 'C:/Users/egrout/Dropbox/coatithon/coatithon_code/code_review/'
 plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level0/'
-gps_file <- "lion_xy_15min_level0.RData" #level0 is when Venus is not removed
+gps_file <- "lion_xy_15min_level0_2yr.RData" 
 id_file <- 'lion_ids.RData'
 
 R <- 100
@@ -15,7 +15,6 @@ library(viridis)
 library(hms)
 
 #read in library of functions
-setwd(coati_dir)
 source('coati_function_library_V1.R')
 
 #load data
@@ -146,7 +145,7 @@ splits_df$n_sub2 <- sapply(splits_df$sub2, function(x){return(sum(!is.na(x)))})
 splits_df$n_sub3 <- sapply(splits_df$sub3, function(x){return(sum(!is.na(x)))})
 
 #save dataframe as its needed for the figure1_fissionfusion_plot.R
-save(splits_df, file = paste0(data_dir, "lion_splits_df.Rdata"))
+save(splits_df, file = paste0(data_dir, "lion_splits_df_2yr.Rdata"))
 
 #--------------------------------------------------------
 
@@ -201,14 +200,10 @@ for(t in 1:(n_times-1)){
   
 }
 
-#this seems to work
-
 
 #make a data frame of merges, with merged group and subgroups
 merge_df <- data.frame(t = merge, merge_group=NA, sub1=NA, sub2=NA, sub3=NA, sub4=NA, sub5=NA)
 
-
-i=5
 for(i in 1:nrow(merge_df)){
   t <- merge_df$t[i]
   merge_group <- subgroup_data$ind_subgroup_membership[,t]
@@ -258,7 +253,7 @@ merge_df$n_sub1 <- sapply(merge_df$sub1, function(x){return(sum(!is.na(x)))})
 merge_df$n_sub2 <- sapply(merge_df$sub2, function(x){return(sum(!is.na(x)))})
 merge_df$n_sub3 <- sapply(merge_df$sub3, function(x){return(sum(!is.na(x)))})
 
-save(merge_df, file = paste0(data_dir, "lion_merge_df.Rdata"))  
+save(merge_df, file = paste0(data_dir, "lion_merge_df_2yr.Rdata"))  
 
 
 

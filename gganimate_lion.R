@@ -21,6 +21,7 @@ library(ggspatial)
 lion <- read.csv("../data/raw/lion_highres.csv")
 
 lion$datetime <- as.POSIXct(x = lion$timestamp, tz = 'UTC', format = "%Y-%m-%d %H:%M:%S")
+lion$local_time <- with_tz(lion$datetime, tzone = "Africa/Gaborone")
 
 unique(as.Date(lion$datetime))
 
@@ -53,7 +54,7 @@ unique_dates <- unique(lion$date)
 #-----------------------------------------------------------------------
 
 lion_timespan <- lion[lion$timestamp >"2023-05-08 00:00:00" & lion$timestamp < "2023-05-09 00:00:00",]
-
+lion_timespan <- lion[lion$local_time >"2023-05-08 12:00:00" & lion$local_time < "2023-05-09 12:00:00",]
 point_colors <- c('#1f78b4','#b2df8a','#33a02c','#fb9a99','#fdbf6f','#ff7f00')  # Add more colors as needed
 
 #add google map under the points
@@ -95,14 +96,21 @@ anim_save(paste0(plot_dir, "lion.mp4"), lion_vid)
 # Create the plot for each day without the map background and following the trajectories of the individuals
 
 for (i in seq(122, length(unique_dates), by = 1)) {
-  start_date <- unique_dates[i]
-  end_date <- unique_dates[min(i+1, length(unique_dates))]
+  #start_date <- unique_dates[i]
+  #end_date <- unique_dates[min(i+1, length(unique_dates))]
   
-  # Filter data for the 10-day period
+  #to make the video from 12:00 to 12:00 the following day
+  start_date <- as.POSIXct(paste(unique_dates[i], "10:00:00"), tz = "Africa/Gaborone")
+  end_date <- as.POSIXct(paste(unique_dates[min(i + 1, length(unique_dates))], "13:00:00"), tz = "Africa/Gaborone")
+  
+  # Filter data for the 1-day period
+  # lion_timespan <- lion %>%
+  #   filter(date >= start_date & date <= end_date)
+  
   lion_timespan <- lion %>%
-    filter(date >= start_date & date <= end_date)
-
-
+  filter(local_time >= start_date & local_time <= end_date)
+  
+  
   g <- ggplot() + 
     # Overall tracks with lower alpha for background
     geom_path(data = lion, aes(x = location.long, y = location.lat, 
@@ -110,13 +118,8 @@ for (i in seq(122, length(unique_dates), by = 1)) {
                                colour = as.factor(individual.local.identifier)), 
               alpha = 0.1) +
     # Daily tracks with higher alpha for highlighting
-    geom_line(data = lion_timespan, aes(x = location.long, y = location.lat, 
-                                        group = individual.local.identifier, 
-                                        colour = as.factor(individual.local.identifier)), 
-              linewidth = 1, alpha = 0.8) +
-    geom_point(data = lion_timespan, aes(x = location.long, y = location.lat, 
-                                         group = individual.local.identifier, 
-                                         colour = as.factor(individual.local.identifier)), 
+    geom_line(data = lion_timespan, aes(x = location.long, y = location.lat, group = individual.local.identifier, colour = as.factor(individual.local.identifier)), linewidth = 1, alpha = 0.8) +
+    geom_point(data = lion_timespan, aes(x = location.long, y = location.lat,  group = individual.local.identifier,  colour = as.factor(individual.local.identifier)), 
                size = 3, alpha = 0.7) +
     scale_color_manual(values = point_colors) +
     theme(legend.title = element_blank(), 
@@ -131,7 +134,7 @@ for (i in seq(122, length(unique_dates), by = 1)) {
     theme_classic()
   
   # Add animation with transition_reveal and view_follow
-  g <- g + transition_reveal(lion_timespan$datetime) +
+  g <- g + transition_reveal(lion_timespan$local_time) +
     labs(title = 'Time: {format(frame_along, "%Y-%m-%d %H:%M")}') +
     view_follow(fixed_y = FALSE) +
     shadow_wake(wake_length = 0.05, alpha = FALSE)
@@ -140,7 +143,7 @@ for (i in seq(122, length(unique_dates), by = 1)) {
   lion_vid <- animate(g, renderer = av_renderer(), height = 1000, width = 1000, fps = 10, duration = 60)
   
 
-anim_save(filename = paste0(plot_dir, "/lion_movement_", start_date, "_to_", end_date, "track.mp4"), animation = lion_vid)
+anim_save(filename = paste0(plot_dir, "loc_time/lion_movement_loctime_", as.Date(start_date), "_to_", as.Date(end_date), "track.mp4"), animation = lion_vid)
 
 }
 
