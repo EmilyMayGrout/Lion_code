@@ -10,6 +10,7 @@
 #60 mins
 #2hrs
 #4hrs
+#do subsampling schedule for 2h/4h 6am-6pm every 4h, 6pm-6am every 2h 
 
 #----------------------------------------------------------------------------------------------
 
@@ -88,7 +89,7 @@ ind_subgroup_membership <- subgroup_data$ind_subgroup_membership
 
 intervals <- c("00:15:00", "00:30:00", "01:00:00", "02:00:00", "04:00:00", "12:00:00")
 
-subsampled_time_results <- subsample_multiple_intervals(ind_subgroup_membership, ts, intervals)
+subsampled_time_results <- subsample_multiple_intervals(ind_subgroup_membership, ts, intervals) 
 
 day_intervals <- c(1, 2, 3, 6, 9, 12, 15, 20, 30, 60, 90)
 
@@ -152,9 +153,8 @@ split_merge_time_offset <- rbind(split_long, merge_long)
 
 #save(split_merge_time_offset,split_events_all, merge_events_all, file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
 
-#load(file = paste0(data_dir, "time_offset_split_merge.Rdata"))
+load(file = paste0(data_dir, "time_offset_split_merge.Rdata"))
 #load(file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
-
 
 # Plot
 g0 <- ggplot(split_merge_time_offset, aes(x = offset, y = n_events, color = interval)) +
@@ -170,7 +170,7 @@ g0 <- ggplot(split_merge_time_offset, aes(x = offset, y = n_events, color = inte
 
 #randomise start day for multiple day extraction - change start date across one month
 
-
+run_this <- F
 if(run_this == T){
 
 day_shifts <- 0:29  # Simulate 30 different days
@@ -185,10 +185,11 @@ colnames(split_events_by_day) <- day_intervals
 colnames(merge_events_by_day) <- day_intervals
 
 # Find all midday indices in ts
-midday_indices <- which(format(ts, "%H:%M:%S") == "12:00:00")
+midday_indices <- which(format(ts, "%H:%M:%S") == "10:00:00")
+midnight_indices <- which(format(ts, "%H:%M:%S") == "02:00:00")
 
 for (i in seq_along(day_shifts)) {
-  start_index <- midday_indices[day_shifts[i] + 1]
+  start_index <- midnight_indices[day_shifts[i] + 1]
   if (is.na(start_index)) next
   
   ind_subgroup_membership_day <- ind_subgroup_membership[, start_index:ncol(ind_subgroup_membership)]
@@ -196,11 +197,17 @@ for (i in seq_along(day_shifts)) {
   
   subsampled_day_results <- subsample_multiple_day_intervals(ind_subgroup_membership_day, ts_day, day_intervals)
   
-  split_list_day <- detect_splits_across_sample_rates(subsampled_day_results, include_singletons = F)
-  merge_list_day <- detect_merges_across_sample_rates(subsampled_day_results, include_singletons = F)
-  
-  split_events_by_day[i, ] <- sapply(split_list_day, nrow)
-  merge_events_by_day[i, ] <- sapply(merge_list_day, nrow)
+  #go through each subsample for each day shift
+  for (j in seq_along(subsampled_day_results)) {
+    subsampled_i_j <- subsampled_day_results[[j]]
+    
+    split_list_day <- detect_splits(subsampled_i_j$matrix)
+    merge_list_day <- detect_merges(subsampled_i_j$matrix)
+    
+    split_events_by_day[i, j] <- nrow(split_list_day)
+    merge_events_by_day[i, j] <- nrow(merge_list_day)
+    
+  }
   
   print(paste("Day shift", i, "done"))
 }
@@ -330,8 +337,8 @@ for (name in element_names) {
     for (j in 1:n_inds) {
       
       # Getting subgroup id for individual i and j
-      sub_ids_i <- samplerate$matrix[i,]
-      sub_ids_j <- samplerate$matrix[j,]
+      sub_ids_i <- samplerate$ind_subgroup_membership[i,]
+      sub_ids_j <- samplerate$ind_subgroup_membership[j,]
       
       # Computing edge weight (fraction of time in same subgroup)
       ff_net[i,j] <- mean(sub_ids_i == sub_ids_j, na.rm = TRUE)
@@ -353,7 +360,11 @@ for (name in element_names) {
 #-----SPLITS---------
 
 
-split_list_samplingrates <- detect_splits(subsampled_results, include_singletons = T)
+split_list_samplingrates <- lapply(subsampled_results, function(x) {
+  detect_splits(x$ind_subgroup_membership)
+})
+
+#names(split_list_samplingrates) <- names(subsampled_results)
 
 #save list
 save(split_list_samplingrates, file = paste0(data_dir, "lion_split_list.Rdata"))
@@ -362,8 +373,11 @@ save(split_list_samplingrates, file = paste0(data_dir, "lion_split_list.Rdata"))
 
 #--------MERGE------------------
 
+merge_list_samplingrates <- lapply(subsampled_results, function(x) {
+  detect_merges(x$ind_subgroup_membership)
+})
 
-merge_list_samplingrates <- detect_merges(subsampled_results, include_singletons = T)
+#names(merge_list_samplingrates) <- names(subsampled_results)
 
 #save list
 save(merge_list_samplingrates, file = paste0(data_dir, "lion_merge_list.Rdata"))
@@ -421,7 +435,7 @@ length_df_long <- pivot_longer(length_df, cols = c(Splits, Merges),
 
 # Plot
 g1 <- ggplot(length_df_long, aes(x = sampling_days, y = Count, color = Event)) +
-  geom_line(size = 1) +
+  geom_line(linewidth = 1) +
   geom_point(size = 3, alpha = 0.6) +
   scale_x_continuous(breaks = seq(0, max(length_df_long$sampling_days), by = 7)) +
   scale_color_manual(values = c("Splits" = "slateblue1", "Merges" = "orange1")) + # Custom colors
@@ -531,4 +545,33 @@ ggplot(both, aes(hours, merge_n_events)) +
   geom_line() +
   theme_minimal()
 
+
+
+
+#-------------------------------------------------------------------
+
+#subsampled 2h/4h == 6am-6pm every 4h, 6pm-6am every 2h
+
+#-------------------------------------------------------------------
+
+subsampled_time_results_2h4h <- subsampled_time_results$subsampled_matrix_02_00_00
+time_vec <- as_hms(subsampled_time_results_2h4h$subsampled_ts)
+
+# Define time bounds
+start_time <- as_hms("06:00:00") #UTC time which is 8am-8pm local
+end_time <- as_hms("18:00:00")  
+
+# Get indices between 6:00 AM and 6:00 PM UTC
+day_indices <- which(time_vec >= start_time & time_vec < end_time)
+night_indices <- which(!(time_vec >= start_time & time_vec < end_time))
+
+#get indices every 4h for day indices by removing every other time index during the day
+day_indices_4h <- day_indices[seq(day_indices[2], length(day_indices), by = 2)]
+indices_sub <- sort(c(day_indices_4h, night_indices))
+#check its subsampled correctly
+t_sub <- subsampled_time_results_2h4h$subsampled_ts[indices_sub]
+
+subsampled_2h4h <- subsampled_time_results_2h4h$ind_subgroup_membership[,indices_sub]
+
+save(subsampled_2h4h, t_sub, indices_sub, file = "subsampled_2h4h_matrix.RData")
 

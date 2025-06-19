@@ -72,6 +72,7 @@ for(i in allNames){
 
 #create times vector - 24h every 15 mins
 
+#should remove a few days at start - so start from 6th May 
 firsttime <- as.POSIXct('2023-05-03 05:00', tz = 'UTC')
 lasttime <-  as.POSIXct('2023-12-03 11:45', tz = 'UTC')
 

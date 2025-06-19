@@ -24,6 +24,7 @@ library(dplyr)
 library(tidyr)
 library(ggthemes)
 library(ggplot2)
+library(ggforce)
 library(vioplot)
 library(plotly)
 library(patchwork)
@@ -34,6 +35,7 @@ library(ggraph)
 library(gganimate)
 library(purrr)
 library(av)
+library(pracma)
 
 #read in library of functions
 source('coati_function_library_V1.R')
@@ -183,12 +185,34 @@ for (i in 1:length(Rs_j)){
 R = 100
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
+
 if(make_plots == T){
 ff_net <- matrix(NA, nrow = n_inds, ncol = n_inds)
+
+split_by_month <- T
+year_months <- unique(format(ts, "%Y-%m"))
+ff_net_month <- array(NA, dim = c(n_inds, n_inds, length(year_months)))
+dimnames(ff_net_month)[[3]] <- year_months
 
 #going through each dyad and calculating fraction of time they are in the same subgroup (out of all time both are tracked)
 for(i in 1:n_inds){
   for(j in 1:n_inds){
+    
+    if(split_by_month){
+      for(m in 1:length(seq_along(year_months))){
+        
+        ym <- year_months[m]
+        
+        # Logical index for matching year-month
+        ts_filter <- format(ts, "%Y-%m") == ym
+        
+        sub_ids_i <- subgroup_data$ind_subgroup_membership[i, ts_filter]
+        sub_ids_j <- subgroup_data$ind_subgroup_membership[j, ts_filter]
+        
+        ff_net_month[i, j, m] <- mean(sub_ids_i == sub_ids_j, na.rm = TRUE)
+        print(ff_net_month[i, j, m])
+      }
+    }
     
     #getting subgroup id for individual i and j
     sub_ids_i <- subgroup_data$ind_subgroup_membership[i,]
@@ -206,9 +230,34 @@ ffnet_reorder <- ff_net[new_order, new_order]
 png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir,'subgroup_network_100m_2yr.png'))
 
 visualize_network_matrix_trago(ffnet_reorder, lion_ids[new_order,])
+
 dev.off()
 
-#it looks like Kiara and Sarafina split from the other group members and travelled atleast 50km from them
+if(make_plots == T){
+for (i in 1:dim(ff_net_month)[3]) {
+  diag(ff_net_month[,,i]) <- NA
+}
+
+new_order <- c(1:3,5,4,6)
+ffnet_reorder <- ff_net[new_order, new_order]
+
+png(height = 2200, width = 3200, units = 'px', filename = paste0(plot_dir,'subgroup_network_100m_monthly.png'))
+
+par(mfrow=c(4,5)) 
+
+for(i in 1:dim(ff_net_month)[3]){
+ffnet_reorder <- ff_net_month[new_order, new_order, i]
+
+visualize_lion_network(ffnet_reorder, lion_ids[new_order,])
+mtext(line=1, side=3, year_months[i] , outer=F)
+
+}
+
+dev.off()
+}
+
+
+#it looks like Kiara and Sarafina split from the other group members and travelled at least 50km from them
 
 #how much missing data is there?
 
@@ -229,6 +278,14 @@ each_sum$missing <- max(each_sum$sum)- each_sum$sum
 each_sum$prop <- (each_sum$missing/max(each_sum$sum))*100
 mean(each_sum$prop)
 sd(each_sum$prop)
+
+#how does proportion of time together change across months
+
+
+
+
+
+
 
 #------------------------------------------
 
@@ -648,7 +705,9 @@ run_consistency <- F
 if(run_consistency == T && make_plots == T){
 
 #function that takes in a splits dataframe and outputs a p_dyad_together matrix (probability of splitting together for each dyad)
-p_dyad_together <- get_p_dyad_together(splits_df_local = splits_all, n_inds_local = n_inds)
+p_dyad_together <- get_p_dyad_together(splits_df_local = split_merge_df[split_merge_df$event == "split",], n_inds_local = n_inds)
+
+splits_all <- split_merge_df[split_merge_df$event == "split",]
 
 #Compute consistency based on consistency metric (see coati_function_library)
 consistency_data <- get_consistency(p_dyad_together)
@@ -719,7 +778,7 @@ split_merge_df$dyad_dist_max_2.3 <- NA
 split_merge_df$event_dur <- NA
 
 ###
-###-----This needs work - need to calculate duration of events on a dyadic level as this current code gives inaccurate values for distance apart against duration 
+###-----This needs work - need to calculate duration of events on a dyadic level as this current code gives inaccurate values for distance apart against duration  - new code written in duration_events.R 
 ###
 ###
 
@@ -1026,7 +1085,11 @@ ggplot(combined_distance_data, aes(Distance))+
   facet_wrap(~Focal_Individual)+
   xlim(0, 1000)
 
-hist(combined_distance_data$Distance, breaks = 100000, xlim = c(0, 100))
+hist(combined_distance_data$Distance, breaks = 100000, xlim = c(0,100), xlab = "Dyadic Distance (m)", main = "")
+hist(combined_distance_data$Distance, breaks = 30, xlab = "Dyadic Distance (m)", main = "")
+
+
+log(5)
 
 }
 
@@ -1122,34 +1185,148 @@ rm(agg_df, event_all, n_subs, p0, p1, p2, p3, gg, row_i)
 #-------------------------------------------------------------------
 
 #Each individuals proportion time alone vs any other situation - each month
-#Proportion of time group is together vs any other situation - each month
 
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
 
-test <- matrix(ncol = n_times, nrow = n_inds)
-for (i in 1:ncol(subgroup_data$ind_subgroup_membership)){
-  
-  for (j in 1:n_inds){
+singles <- matrix(ncol = n_times, nrow = n_inds)
+
+for (i in 1:ncol(subgroup_data$ind_subgroup_membership)) {
+  for (j in 1:n_inds) {
     
-    group_i_j <- subgroup_data$ind_subgroup_membership[j,i]
-    group_i <- subgroup_data$ind_subgroup_membership[,i]
-    sub_counts <- table(group_i)
+    group_i_j <- subgroup_data$ind_subgroup_membership[j, i]
+    group_i <- subgroup_data$ind_subgroup_membership[, i]
     
-    
-    if(group_i_j %in% group_i[-j]){
-      test[j,i] <- 0
+    if (is.na(group_i_j)) {
+      singles[j, i] <- NA
+    } else {
+      # Count how many individuals are in the same subgroup
+      same_group_members <- sum(group_i == group_i_j, na.rm = TRUE)
       
-      
-    } else{ 
-      test[j,i] <- 1
+      # If only this individual is in that group, mark as single
+      if (same_group_members == 1) {
+        singles[j, i] <- 1
+      } else {
+        singles[j, i] <- 0
       }
+    }
   }
 }
 
 
+# Get month index for each time point
+month_indx <- format(ts, "%m")
+months <- sort(unique(month_indx))  
 
+# Initialize matrices
+alone_count <- matrix(NA, nrow = n_inds, ncol = length(unique(month_indx)))
+alone_prop <- matrix(NA, nrow = n_inds, ncol = length(unique(month_indx)))
+
+# Column names as months
+months <- sort(unique(month_indx))
+colnames(alone_count) <- months
+colnames(alone_prop) <- months
+
+# Loop through each month
+for (i in seq_along(months)) {
+  ts_month_i <- which(month_indx == months[i])
+  singles_month_i <- singles[, ts_month_i, drop = FALSE]
+  
+  # Count how often individual is alone (value == 1)
+  alone_count[, i] <- rowSums(singles_month_i == 1, na.rm = TRUE)
+  
+  # Count number of valid time points (not NA)
+  valid_counts <- rowSums(!is.na(singles_month_i))
+  
+  # Proportion of time alone = alone / valid observations
+  alone_prop[, i] <- alone_count[, i] / valid_counts
+}
+
+# Add individual IDs as a column for reshaping
+alone_count_df <- as.data.frame(alone_count)
+alone_count_df$id <- 1:nrow(alone_count_df)
+alone_prop_df <- as.data.frame(alone_prop)
+alone_prop_df$id <- 1:nrow(alone_prop_df)
+
+alone_count_long <- alone_count_df %>%
+  pivot_longer(cols = -id, names_to = "month", values_to = "alone_count")
+alone_prop_long <- alone_prop_df %>%
+  pivot_longer(cols = -id, names_to = "month", values_to = "alone_prop")
+
+alone_long_combined <- left_join(alone_count_long, alone_prop_long, by = c("id", "month"))
+
+alone_long_combined <- alone_long_combined %>%
+  mutate(name = lion_ids$name[id])
+
+
+gg <- ggplot(alone_long_combined, aes(x=month, y = alone_prop, colour = name))+
+  geom_point(size = 3)+
+  geom_line(aes(group = name), alpha = 0.5, linewidth = 2)+
+  labs(
+    x = "Month",
+    y = "Proportion of time alone",
+    colour = "Individual ID"
+  )+
+  theme_classic()
+
+ggsave(filename = paste0(plot_dir, 'prop_timealone.png'), plot = gg, width = 8, height = 5, dpi = 300)
+
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#Proportion of time group is together vs any other situation - each month
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+
+
+together <- matrix(ncol = n_times, nrow = 1)
+
+for (i in 1:ncol(subgroup_data$ind_subgroup_membership)) {
+
+  #if all individuals are in the same subgroup and there are 1 or no inds who are NA, the full group is together (NA rule because of Simba)
+  if(length(unique(na.omit(subgroup_data$ind_subgroup_membership[,i]))) == 1 & sum(is.na(subgroup_data$ind_subgroup_membership[,i])) <= 1) {
+    together[i] <- 1
+   } else{
+     together[i] <- 0
+   
+      }
+  }
+
+together_prop <- matrix(NA, nrow = 1, ncol = length(unique(month_indx)))
+colnames(together_prop) <- months
+
+# code copied from above
+for (i in seq_along(months)) {
+  ts_month_i <- which(month_indx == months[i])
+  together_month_i <- together[ts_month_i, drop = FALSE]
+  
+  # Count how often individual is alone (value == 1)
+  together_count <- sum(together_month_i == 1, na.rm = TRUE)
+  
+  # Count number of valid time points (not NA)
+  valid_counts <- sum(!is.na(together_month_i))
+  
+  # Proportion of time together = together / valid observations
+  together_prop[i] <- together_count / valid_counts
+}
+
+
+together_long <- as.data.frame(t(together_prop))
+colnames(together_long) <- "prop_together"
+together_long$month <- sort(unique(month_indx))  
+
+gg <- ggplot(together_long, aes(x=month, y = prop_together, group = 1))+
+  geom_point(size = 3)+
+  geom_line()+
+  labs(
+    x = "Month",
+    y = "Proportion of time together"
+  )+
+  theme_classic()
+
+ggsave(filename = paste0(plot_dir, 'prop_timetogether.png'), plot = gg, width = 8, height = 5, dpi = 300)
 
 
 #-------------------------------------------------------------------
@@ -1392,6 +1569,7 @@ ggsave(filename = paste0(plot_dir, 'dyadic_distance_bef_aft.png'), plot = gg, wi
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
 
+if(make_plots == T){
 
 #now want to make the network into an animation over time for before Simba died (as can't get it to work when he's not in the group)
 
@@ -1535,5 +1713,451 @@ network_plot <- ggplot() +
   ease_aes("linear")
 
 animate(network_plot, width = 8, height = 6, units = "in", fps = 30, res = 300, duration = 120, renderer = av_renderer("../results/level0/dyadic_network_clean.mp4"))
+}
+
+
+
+#---------------------------------------------------------------------
+
+#How does the radius affect the number of split and merge events observed
+
+#---------------------------------------------------------------------
+
+R = 100
+subgroup_data <- get_subgroup_data(xs, ys, R)
+#function code in lion_functions
+splits_df <- detect_splits(subgroup_data$ind_subgroup_membership)
+merges_df <- detect_merges(subgroup_data$ind_subgroup_membership)
+
+#10-500m with 10m breaks
+#500m-5000km with 100m breaks
+
+run_event_counts <- F
+
+if(run_event_counts == T){
+seqs1 <- seq(from = 10, to = 500, by = 10)
+seqs2 <- seq(from = 600, to = 5000, by = 100)
+seqs_all <- c(seqs1, seqs2)
+
+n_events_R <- data.frame(matrix(seqs_all, ncol = 1))
+colnames(n_events_R) <- "radius"
+n_events_R$split_count <- NA
+n_events_R$merge_count <- NA
+
+
+for (i in 1:length(seqs_all)){
+  
+  radius_i <- seqs_all[i]
+  
+  print(radius_i)
+  subgroup_data <- get_subgroup_data(xs, ys, radius_i)
+  #function code in lion_functions
+  splits_df <- detect_splits(subgroup_data$ind_subgroup_membership)
+  n_events_R$split_count[i] <- nrow(splits_df)
+  merges_df <- detect_merges(subgroup_data$ind_subgroup_membership)
+  n_events_R$merge_count[i] <- nrow(merges_df)
+  
+  
+}
+
+}
+#save(n_events_R, file = "n_events_R.RData")
+load("../data/processed/n_events_R.RData")
+
+
+png(height = 500, width = 600, units = 'px', filename = paste0(plot_dir, 'events_counted_change_radius.png'))
+plot(n_events_R$radius, n_events_R$split_count, type = "l", xlim = c(0,1500), ylim = c(0, 10000), xlab = "Radius for detecting splits and merges", ylab = "event count")
+points(n_events_R$radius, n_events_R$merge_count, col = "red", type = "l", xlim = c(0,1500), ylim = c(0, 10000))
+dev.off()
+
+#hist(n_events_R$split_count, breaks = 800, xlim = c(0,500))
+
+
+#ran this with all data and the data 
+
+#below 30m is likely GPS error
+#n_events_R <- n_events_R[-c(1:3),]
+
+x <- n_events_R$radius
+y <- n_events_R$split_count
+
+#Compute derivatives
+dy <- diff(y)
+ddy <- diff(dy)
+
+#Adjust x values to match diff length
+x1 <- x[-1]         # For first derivative (dy)
+x2 <- x[-c(1, 2)]   # For second derivative (ddy)
+
+#Find index of max curvature
+max_curv_idx <- which.max(abs(ddy))
+knee_radius <- x2[max_curv_idx]
+
+#Base plot: original data
+plot(x, y, type = "l", col = "black", lwd = 2,
+     xlab = "Radius", ylab = "Split Count",
+     main = "Original Curve with Derivatives", xlim = c(0,500))
+
+#Add first derivative
+lines(x1, dy, col = "orange", lwd = 2)
+
+#Add second derivative
+lines(x2, ddy, col = "blue", lwd = 2)
+
+#Mark the knee point
+abline(v = knee_radius, col = "red", lty = 2)
+legend("topright", legend = c("Original", "1st Derivative", "2nd Derivative", "Knee Point"),
+       col = c("black", "orange", "blue", "red"), lty = c(1, 1, 1, 2), lwd = 2)
+
+knee_radius
+
+#Define the min and max
+y_max <- max(y)
+y_min <- min(y)
+
+#Compute the 95% drop threshold
+y_thresh <- y_min + 0.05 * (y_max - y_min)  # 95% of drop done
+
+#Find the first radius where y <= y_thresh
+plateau_index <- which(y <= y_thresh)[1]
+plateau_radius <- x[plateau_index]
+
+#Plot it
+plot(x, y, type = "l", main = "Plateau Estimation (95% Drop)",
+     xlab = "Radius", ylab = "Split Count")
+abline(h = y_thresh, col = "darkgreen", lty = 2)
+abline(v = plateau_radius, col = "blue", lty = 2)
+legend("topright", legend = c("95% Drop", "Plateau Radius"),
+       col = c("darkgreen", "blue"), lty = 2, lwd = 2)
+
+plateau_radius  # this is your plateau point
+
+
+png(height = 500, width = 1000, units = 'px', filename = paste0(plot_dir, 'plateau_knee_changepoint_radius.png'))
+par(mfrow=c(1,2))
+#Base plot: original data
+plot(x, y, type = "l", col = "black", lwd = 2,
+     xlab = "Radius", ylab = "Split Count",
+     main = "Original Curve with Derivatives", xlim = c(0,500))
+lines(x1, dy, col = "orange", lwd = 2)
+lines(x2, ddy, col = "blue", lwd = 2)
+abline(v = knee_radius, col = "red", lty = 2)
+legend("topright", legend = c("Original", "1st Derivative", "2nd Derivative", "Knee Point"),
+       col = c("black", "orange", "blue", "red"), lty = c(1, 1, 1, 2), lwd = 2)
+text(150, 6000, paste0("knee point: ", knee_radius, "m"))
+
+plot(x, y, type = "l", main = "Plateau Estimation (95% Drop)",
+     xlab = "Radius", ylab = "Split Count")
+abline(h = y_thresh, col = "darkgreen", lty = 2)
+abline(v = plateau_radius, col = "blue", lty = 2)
+legend("topright", legend = c("95% Drop", "Plateau Radius"),
+       col = c("darkgreen", "blue"), lty = 2, lwd = 2)
+text(1500, 6000, paste0("plateau point: ", plateau_radius, "m"))
+
+dev.off()
+
+# x <- n_events_R$radius
+# y <- n_events_R$split_count
+# 
+# #Estimate starting values
+# a_start <- max(y) - min(y)
+# b_start <- 0.01  # decay rate guess
+# c_start <- min(y)
+# 
+# #Fit the model
+# decay_model <- nls(
+#   y ~ a * exp(-b * x) + c,
+#   start = list(a = a_start, b = b_start, c = c_start),
+#   control = nls.control(maxiter = 200)
+# )
+# 
+# #Model summary
+# summary(decay_model)
+# 
+# #Generate predicted values
+# y_pred <- predict(decay_model)
+# 
+# #Plot original and fitted curve
+# plot(x, y, type = "l", col = "black", lwd = 2, main = "Exponential Decay Fit",
+#      xlab = "Radius", ylab = "Split Count")
+# lines(x, y_pred, col = "blue", lwd = 2)
+# legend("topright", legend = c("Observed", "Fitted Model"),
+#        col = c("black", "blue"), lwd = 2)
+# 
+# #Extract fitted parameters
+# coefs <- coef(decay_model)
+# a <- coefs["a"]
+# b <- coefs["b"]
+# c <- coefs["c"]
+# 
+# #Find radius where y = 95% of the way to c
+# y_thresh <- c + 0.05 * a
+# 
+# x_plateau <- -log((y_thresh - c) / a) / b
+# 
+# abline(v = x_plateau, col = "red", lty = 2)
+# legend("topright", legend = c("Observed", "Fitted", "95% Plateau"),
+#        col = c("black", "blue", "red"), lty = c(1, 1, 2), lwd = 2)
+# 
+# x_plateau  # this is your estimated plateau point
+
+
+#---------------------------------------------------------------------
+
+#what time of day do you capture individuals together?
+
+#---------------------------------------------------------------------
+
+#cleaning the environment
+rm(alone_count, alone_count_df, alone_count_long, alone_long_combined, alone_prop, alone_prop_df, alone_prop_long, combined_distance_data, combined_distance_data_list, daily_edges, df_after, df_after_edges, df_before, df_before_edges, dyad_all, dyad_all_wide, dyad_avg, dyad_df, dyad_edges, edges_for_plot, edges_for_plot_clean, g, g_after, g_base, g_before, g_layout, layout_fixed, layout_kk, layout_static, layout_static_df, layouts_by_day, layouts_by_day_clean, network_plot, nodes, singles, singles_month_i, subgroups, together, together_long, together_prop)
+
+#first get the individuals who are is visible range - here we say 60m
+subgroup_data_60 <- get_subgroup_data(xs, ys, 60)
+#get all individuals who could potentially join the group - within 600m radius
+subgroup_data_600 <- get_subgroup_data(xs, ys, 600)
+
+#get index for times during the day - for local time (+ 2h to UTC time)
+
+day_ts <- ts[which(as_hms(ts) >= as_hms("04:00:00") & as_hms(ts) <= as_hms("16:00:00"))]
+day_index <- match(day_ts, ts)
+
+n_subs_day <- data.frame(subgroup_data_60$n_subgroups[day_index], subgroup_data_600$n_subgroups[day_index], day_ts)
+colnames(n_subs_day) <- c("n_subs_60", "n_subs_600", "datetime")
+n_subs_day$diff <- n_subs_day$n_subs_60 - n_subs_day$n_subs_600
+
+# Add required columns to your data
+n_subs_day <- n_subs_day %>%
+  mutate(
+    hour = hour(datetime + hours(2)), #local hour
+    is_diff_zero = diff == 0,
+    month = month(datetime, label = TRUE) 
+  )
+
+#for each month for each hour, find the proportion of time when all inds are seen within 60m that were present in 600m
+# Summarize proportion of times when diff == 0
+summary_df <- n_subs_day %>%
+  group_by(month, hour) %>%
+  summarise(
+    total = n(),
+    diff_zero_count = sum(is_diff_zero, na.rm = TRUE),
+    prop_diff_zero = diff_zero_count / total,
+    .groups = "drop"
+  )
+
+
+
+gg <- ggplot(summary_df, aes(x = factor(hour), y = prop_diff_zero)) +
+  geom_col(fill = "slateblue", alpha = 0.8) +
+  facet_wrap(~ month, ncol = 4) +
+  labs(
+    title = "Proportion of time all individuals in the 600m radius are seen in 60m radius",
+    x = "Hour of Day (Local Time)",
+    y = "Proportion time individuals are within 60m"
+  ) +
+  theme_classic() +
+  theme(axis.text.x = element_text(hjust = 1))
+gg
+
+ggsave(filename = paste0(plot_dir, 'prop_time_group_at600m_arewithin60m.png'), plot = gg, width = 12, height = 8, dpi = 300)
+
+
+summary_df <- n_subs_day %>%
+  group_by(month, hour) %>%
+  summarise(
+    prop_diff_zero = mean(is_diff_zero, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+gg <- ggplot(summary_df, aes(x = factor(hour), y = prop_diff_zero)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(,
+    x = "Hour of Day (Local Time)",
+    y = "Proportion time available individuals are within 60m") +
+  theme_classic()
+
+ggsave(filename = paste0(plot_dir, 'summarised_prop_time_group_at600m_arewithin60m.png'), plot = gg, width = 6, height = 5, dpi = 300)
+
+
+#make example day plots for different times
+
+#look at mean dispersion of group within the 600m radius 
+
+ind_subgroup_membership_600 <- subgroup_data_600$ind_subgroup_membership
+#go through each column and get the locations of individuals in the same subgroup to extract the spatial dispersion (mean distance to centroid of group), and maximum dyadic distance
+
+if(run_this == T){
+mean_location_df <- data.frame()
+
+for (i in 1:ncol(ind_subgroup_membership_600)) {
+  
+  unique_groups <- unique(na.omit(ind_subgroup_membership_600[, i]))
+  
+  for (j in unique_groups) {
+    
+    index_for_j <- which(ind_subgroup_membership_600[, i] == j)
+    
+    x_coords <- xs[index_for_j, i]
+    y_coords <- ys[index_for_j, i]
+    
+    mean_xs_j_i <- mean(xs[index_for_j, i], na.rm = TRUE)
+    mean_ys_j_i <- mean(ys[index_for_j, i], na.rm = TRUE)
+    
+    dx <- x_coords - mean_xs_j_i
+    dy <- y_coords - mean_ys_j_i
+    distances_to_centroid <- sqrt(dx^2 + dy^2)
+    spatial_dispersion <- mean(distances_to_centroid, na.rm = TRUE)
+    
+    if (length(index_for_j) > 1) {
+      coords_matrix <- cbind(x_coords, y_coords)
+      dist_matrix <- dist(coords_matrix)  # Euclidean distances
+      #mean_loc_xs <- mean_xs_j_i
+      #mean_loc_ys <- mean_ys_j_i
+      max_dyadic_distance <- max(dist_matrix, na.rm = TRUE)
+      median_dyadic_distance <- median(dist_matrix, na.rm = TRUE)
+      mean_dyadic_distance <- mean(dist_matrix, na.rm = TRUE)
+      
+    } else {
+      max_dyadic_distance <- NA  # Only one member in group
+      mean_dyadic_distance <- NA
+      median_dyadic_distance <- NA
+      #mean_loc_xs <- mean_xs_j_i
+      #mean_loc_ys <- mean_ys_j_i
+    }
+    
+    size_j_i <- length(index_for_j)
+    
+    row_df <- data.frame(
+      time_index = i,
+      timestamp = ts[i],
+      subgroup_id = j,
+      subgroup_size = size_j_i,
+      spatial_dispersion = spatial_dispersion,
+      max_dyadic_distance = max_dyadic_distance,
+      median_dyadic_distance = median_dyadic_distance,
+      mean_dyadic_distance = mean_dyadic_distance
+    )
+    
+    mean_location_df <- rbind(mean_location_df, row_df)
+  }
+}
+}
+save(mean_location_df, file = "mean_location_df.RData")
+if(run_this == F){load("mean_location_df.RData")}
+
+
+#look at these results for daytime hours - is there a radius needed to see all inds within 600m?
+
+mean_location_df$day <- mean_location_df$time_index %in% day_index
+
+# Subset the data for day observations
+df_day <- subset(mean_location_df, day == TRUE)
+
+# Create individual plots
+p1 <- ggplot(df_day, aes(x = spatial_dispersion)) +
+  geom_histogram(bins = 100, fill = "slateblue", color = "black") +
+  labs(title = "Spatial Dispersion", x = "Mean Distance to Centroid (m)", y = "Count") +
+  theme_classic()
+
+p2 <- ggplot(df_day, aes(x = max_dyadic_distance)) +
+  geom_histogram(bins = 100, fill = "slateblue4", color = "black") +
+  labs(title = "Max Dyadic Distance", x = "Max Pairwise Distance (m)", y = "Count") +
+  theme_classic()
+
+p3 <- ggplot(df_day, aes(x = mean_dyadic_distance)) +
+  geom_histogram(bins = 100, fill = "darkorange2", color = "black") +
+  labs(title = "Mean Dyadic Distance", x = "Mean Pairwise Distance (m)", y = "Count") +
+  theme_classic()
+
+p4 <- ggplot(df_day, aes(x = median_dyadic_distance)) +
+  geom_histogram(bins = 100, fill = "orange", color = "black") +
+  labs(title = "Median Dyadic Distance", x = "Median Pairwise Distance (m)", y = "Count") +
+  theme_classic()
+
+# Combine the plots into one row
+combined_plot <- p1 + p2 + p3 + p4 + plot_layout(nrow = 2)
+combined_plot
+ggsave(filename = paste0(plot_dir, '600m_dyadic_distances.png'), plot = combined_plot, width = 12, height = 9, dpi = 300)
+
+
+#example plots for locations within the 600m radius with the 60m dbscan
+
+# Daytime indices
+day_index <- match(day_ts, ts)
+
+# Sequence of daytime steps to sample
+sampled_day_indices <- day_index[seq(from = 1, to = length(day_index), by = 100)]
+
+if(make_plots == T){
+for (i in sampled_day_indices) {
+ 
+  #get the id of the group that has the most individuals in (as we don't need to plot the small groups)
+  group_id <- as.numeric(names(which.max(table(na.omit(ind_subgroup_membership_600[, i])))))
+  
+  # Get indices of individuals in subgroup
+  ind_indices <- which(ind_subgroup_membership_600[, i] == group_id)
+  
+  # Skip empty groups
+  if (length(ind_indices) == 0) next
+  
+  # Extract coordinates and IDs/colors
+  xs_i <- xs[ind_indices, i]
+  ys_i <- ys[ind_indices, i]
+  names_i <- lion_ids$name[ind_indices]
+  colors_i <- lion_ids$color[ind_indices]
+  
+  # Build plot dataframe
+  plot_df <- data.frame(x = xs_i, y = ys_i, name = names_i, color = colors_i)
+  
+  # Plot
+  p <- ggplot(plot_df, aes(x = x, y = y)) +
+    geom_circle(aes(x0 = x, y0 = y, r = 60), inherit.aes = FALSE, color = "slateblue", alpha = 0.4) +
+    geom_point(aes(fill = color), shape = 21, size = 4, color = "black") +
+    #geom_text(aes(label = name), vjust = -1, size = 4) +
+    
+    #600m scale bar
+    annotate("segment", x = min(plot_df$x), xend = min(plot_df$x) + 600,
+             y = min(plot_df$y) - 100, yend = min(plot_df$y) - 100, linewidth = 1.2) +
+    annotate("text",  x = min(plot_df$x) + 300,  y = min(plot_df$y) - 150, 
+             label = "600 m", size = 5) +
+    scale_fill_identity() +
+    coord_fixed() +
+    theme_classic() +
+    labs(
+      title = (ts[i] + hours(2)),
+      x = "X coordinate (m)",
+      y = "Y coordinate (m)"
+    )
+  
+  #print(p)
+  
+  
+  ggsave(filename = paste0(plot_dir, "600m_dbscan_plots/", "t_", i,  '_location.png'), plot = p, width = 10, height = 10, dpi = 300)
+  
+ }
+}
+
+#working progress
+
+#find distance between centroid of subgroups that are within 600m but not 60m radius
+subgroup_data_60 <- get_subgroup_data(xs, ys, 60)
+ind_meb_60 <- subgroup_data_60$ind_subgroup_membership
+subgroup_data_600 <- get_subgroup_data(xs, ys, 600)
+ind_meb_600 <- subgroup_data_600$ind_subgroup_membership
+
+i = 1
+
+group_id <- 1
+
+which(ind_meb_600[,1] == group_id)
+
+#get group id for the group with the most inds
+group_id <- as.numeric(names(which.max(table(na.omit(ind_subgroup_membership_600[, i])))))
+
+
+
+
+
+
+
 
 

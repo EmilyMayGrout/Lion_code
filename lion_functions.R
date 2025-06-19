@@ -1,111 +1,21 @@
 #helpful for comparing differences between dataframes
 #anti_join(data.frame(t = splits_df2$t), data.frame(t = splits_df$t), by = "t")
 
-
-
-detect_merges_across_sample_rates <- function(subsampled_results, include_singletons = TRUE) {
-  merge_list_samplingrates <- list()
-  element_names <- names(subsampled_results)
+visualize_lion_network <- function(net, lion_ids, header){
   
-  for (name in element_names) {
-    samplerate <- subsampled_results[[name]]
-    merge <- c()
-    n_times_cut <- ncol(samplerate$matrix)
-    
-    for (t in 2:n_times_cut) {
-      merge_group <- samplerate$matrix[, t]
-      subgroups_previously <- samplerate$matrix[, t - 1]
-      
-      if (sum(!is.na(merge_group)) == 0 | sum(!is.na(subgroups_previously)) == 0) next
-      
-      merge_group[is.na(subgroups_previously)] <- NA
-      subgroups_previously[is.na(merge_group)] <- NA
-      
-      n_merge_group <- length(unique(merge_group[!is.na(merge_group)]))
-      n_subgroups_previously <- length(unique(subgroups_previously[!is.na(subgroups_previously)]))
-      
-      singletons_now <- sum(table(merge_group) == 1)
-      singletons_later <- sum(table(subgroups_previously) == 1)
-      
-      if (!include_singletons) {
-        if (n_merge_group == 1 &&
-            n_subgroups_previously > 1 &&
-            singletons_later == 0) {
-          merge <- c(merge, t)
-        }
-        if (n_merge_group > 1 &&
-            (singletons_now + 1) == n_merge_group &&
-            n_subgroups_previously > n_merge_group &&
-            singletons_now == singletons_later) {
-          merge <- c(merge, t)
-        }
-      } else {
-        if (n_merge_group < n_subgroups_previously) {
-          merge <- c(merge, t)
-        }
-      }
-    }
-    
-    if (length(merge) == 0) {
-      merge_list_samplingrates[[name]] <- data.frame(
-        t = integer(),
-        merge_group = I(list()),
-        sub1 = I(list()),
-        sub2 = I(list()),
-        sub3 = I(list()),
-        sub4 = I(list()),
-        sub5 = I(list()),
-        subsample_indices = I(list()),
-        datetime = I(list()),
-        n_merge = integer(),
-        n_sub1 = integer(),
-        n_sub2 = integer(),
-        n_sub3 = integer()
-      )
-      next
-    }
-    
-    merge_df <- data.frame(t = merge,
-                           merge_group = NA, sub1 = NA, sub2 = NA,
-                           sub3 = NA, sub4 = NA, sub5 = NA,
-                           subsample_indices = NA)
-    
-    for (i in 1:nrow(merge_df)) {
-      t <- merge_df$t[i]
-      merge_group <- samplerate$matrix[, t]
-      subgroups_previously <- samplerate$matrix[, t - 1]
-      
-      merge_group[is.na(subgroups_previously)] <- NA
-      subgroups_previously[is.na(merge_group)] <- NA
-      
-      changed_indices <- which(merge_group != subgroups_previously)
-      group_id_changers <- merge_group[changed_indices]
-      prev_id_changers <- subgroups_previously[changed_indices]
-      
-      merge_df$merge_group[i] <- list(which(merge_group == group_id_changers[1]))
-      group_ids_before <- unique(prev_id_changers)
-      
-      for (j in 1:length(group_ids_before)) {
-        group_id <- group_ids_before[j]
-        inds_in_group <- which(subgroups_previously == group_id)
-        orig_inds_in_group <- intersect(inds_in_group, changed_indices)
-        
-        merge_df[[paste0("sub", j)]][i] <- list(orig_inds_in_group)
-      }
-      
-      merge_df$subsample_indices[i] <- list(samplerate$subsample_indices[t])
-      merge_df$datetime[i] <- list(samplerate$subsampled_ts[t + 1])
-    }
-    
-    merge_df$n_merge <- sapply(merge_df$merge_group, function(x) sum(!is.na(x)))
-    merge_df$n_sub1 <- sapply(merge_df$sub1, function(x) sum(!is.na(x)))
-    merge_df$n_sub2 <- sapply(merge_df$sub2, function(x) sum(!is.na(x)))
-    merge_df$n_sub3 <- sapply(merge_df$sub3, function(x) sum(!is.na(x)))
-    
-    merge_list_samplingrates[[name]] <- merge_df
-  }
+  zmin <- min(net, na.rm=T)
+  #zmax <- max(net, na.rm=T)
   
-  return(merge_list_samplingrates)
+  #if single matrix, have mar = c(9,9,3,1), if multiple then have mar = c(9,9,3,10)
+  par(mgp=c(3, 1, 0), mar=c(9,9,3,10)) #bottom, left, top, and right
+  #change legend.mar to 8 for plotting multiple together, not legend axis
+  image.plot(net, col = viridis(256), zlim=c(0,1), xaxt= 'n', yaxt = 'n', legend.cex = 7, 
+             legend.width = 1.3,legend.mar = 10, legend.line = 1, axis.args=list(cex.axis=2))
+  axis(1, at = seq(0,1,length.out= nrow(net)), labels = lion_ids$name, las = 2, cex.axis=1.8)
+  axis(2, at = seq(0,1,length.out= nrow(net)), labels = lion_ids$name, las = 2,  cex.axis=1.8)
+  
+  points(rep(-.1, nrow(net)),seq(0,1,length.out=n_inds),col=lion_ids$color, xpd = T, pch = 19, cex = 2.5)
+  points(seq(0,1,length.out=nrow(net)),rep(-.1,n_inds),col=lion_ids$color, xpd = T, pch = 19, cex = 2.5)
 }
 
 
@@ -113,13 +23,13 @@ detect_merges_across_sample_rates <- function(subsampled_results, include_single
 #extracting merges from a single matrix
 detect_merges <- function(ind_subgroup_membership) {
   
-  n_times <- ncol(subgroup_data$ind_subgroup_membership)
+  n_times <- ncol(ind_subgroup_membership)
   merges <- c()
   
   for (t in 1:(n_times - 1)) {
     
-    now <- subgroup_data$ind_subgroup_membership[, t]
-    before <- subgroup_data$ind_subgroup_membership[, t - 1]
+    now <- ind_subgroup_membership[, t]
+    before <- ind_subgroup_membership[, t - 1]
     
     # Keep only individuals with data in both time steps
     valid_inds <- !is.na(now) & !is.na(before)
@@ -145,14 +55,23 @@ detect_merges <- function(ind_subgroup_membership) {
     }
   }
   
+  # If no merges were found, return an empty data frame with correct columns
+  if (length(merges) == 0) {
+    return(data.frame(
+      t = integer(0),
+      merged_group = character(0),
+      sub1 = character(0),
+      sub2 = character(0)
+    ))
+  }
   
   # Create a data frame of merges, with contributing groups and merged group
   merges_df <- data.frame(t = merges, merged_group=NA, sub1=NA, sub2=NA, sub3=NA, sub4=NA, sub5=NA)
   
   for(i in 1:nrow(merges_df)){
     t <- merges_df$t[i]
-    subgroups_now <- subgroup_data$ind_subgroup_membership[,t]
-    subgroups_before <- subgroup_data$ind_subgroup_membership[,t-1]
+    subgroups_now <- ind_subgroup_membership[,t]
+    subgroups_before <- ind_subgroup_membership[,t-1]
     
     # Ensure NAs are synced
     subgroups_now[is.na(subgroups_before)] <- NA
@@ -208,127 +127,18 @@ detect_merges <- function(ind_subgroup_membership) {
   
 }
 
-detect_splits_across_sample_rates <- function(subsampled_results, include_singletons = TRUE) {
-  split_list_samplingrates <- list()
-  element_names <- names(subsampled_results)
-  
-  for (name in element_names) {
-    samplerate <- subsampled_results[[name]]
-    splits <- c()
-    n_times_cut <- ncol(samplerate$matrix)
-    
-    for (t in 1:(n_times_cut - 1)) {
-      subgroups_now <- samplerate$matrix[, t]
-      subgroups_later <- samplerate$matrix[, t + 1]
-      
-      if (sum(!is.na(subgroups_now)) == 0 | sum(!is.na(subgroups_later)) == 0) next
-      
-      subgroups_now[is.na(subgroups_later)] <- NA
-      subgroups_later[is.na(subgroups_now)] <- NA
-      
-      n_subgroups_now <- length(unique(subgroups_now[!is.na(subgroups_now)]))
-      n_subgroups_later <- length(unique(subgroups_later[!is.na(subgroups_later)]))
-      
-      singletons_now <- sum(table(subgroups_now) == 1)
-      singletons_later <- sum(table(subgroups_later) == 1)
-      
-      # Check what groups these individuals belong to at t+1
-      later_groups <- later[modal_inds]
-      unique_later_groups <- unique(later_groups[!is.na(later_groups)])
-      
-      if (!include_singletons) {
-        if ((n_subgroups_now == 1) &&
-            n_subgroups_later > n_subgroups_now &&
-            singletons_later == 0) {
-          splits <- c(splits, t)
-        }
-        if (n_subgroups_now > 1 &&
-            ((singletons_now + 1) == n_subgroups_now) &&
-            n_subgroups_later > n_subgroups_now &&
-            singletons_now == singletons_later) {
-          splits <- c(splits, t)
-        }
-      } else {
-        if (n_subgroups_later > n_subgroups_now) {
-          splits <- c(splits, t)
-       
-       }
-      }
-     }
-    
-    if (length(splits) == 0) {
-      split_list_samplingrates[[name]] <- data.frame(
-        t = integer(),
-        split_group = I(list()),
-        sub1 = I(list()),
-        sub2 = I(list()),
-        sub3 = I(list()),
-        sub4 = I(list()),
-        sub5 = I(list()),
-        subsample_indices = I(list()),
-        datetime = I(list()),
-        n_split = integer(),
-        n_sub1 = integer(),
-        n_sub2 = integer(),
-        n_sub3 = integer()
-      )
-      next
-    }
-    
-    split_df <- data.frame(t = splits,
-                           split_group = NA, sub1 = NA, sub2 = NA,
-                           sub3 = NA, sub4 = NA, sub5 = NA,
-                           subsample_indices = NA)
-    
-    for (i in 1:nrow(split_df)) {
-      t <- split_df$t[i]
-      subgroups_now <- samplerate$matrix[, t]
-      subgroups_later <- samplerate$matrix[, t + 1]
-      
-      subgroups_now[is.na(subgroups_later)] <- NA
-      subgroups_later[is.na(subgroups_now)] <- NA
-      
-      changed_indices <- which(subgroups_now != subgroups_later)
-      group_id_changers <- subgroups_now[changed_indices]
-      new_id_changers <- subgroups_later[changed_indices]
-      
-      split_df$split_group[i] <- list(which(subgroups_now == group_id_changers[1]))
-      group_ids_after <- unique(new_id_changers)
-      
-      for (j in 1:length(group_ids_after)) {
-        group_id <- group_ids_after[j]
-        inds_in_group <- which(subgroups_later == group_id)
-        orig_inds_in_group <- intersect(inds_in_group, changed_indices)
-        
-        split_df[[paste0("sub", j)]][i] <- list(orig_inds_in_group)
-      }
-      
-      split_df$subsample_indices[i] <- list(samplerate$subsample_indices[t])
-      split_df$datetime[i] <- list(samplerate$subsampled_ts[t + 1])
-    }
-    
-    split_df$n_split <- sapply(split_df$split_group, function(x) sum(!is.na(x)))
-    split_df$n_sub1 <- sapply(split_df$sub1, function(x) sum(!is.na(x)))
-    split_df$n_sub2 <- sapply(split_df$sub2, function(x) sum(!is.na(x)))
-    split_df$n_sub3 <- sapply(split_df$sub3, function(x) sum(!is.na(x)))
-    
-    split_list_samplingrates[[name]] <- split_df
-  }
-  
-  return(split_list_samplingrates)
-}
-
 
 #---------------------------------------------------------------------------------
 #function for one matrix:
 detect_splits <- function(ind_subgroup_membership) {
   
   n_times <- ncol(ind_subgroup_membership)
+  
   splits <- c()
   
   for (t in 1:(n_times - 1)) {
-    now <- subgroup_data$ind_subgroup_membership[, t]
-    later <- subgroup_data$ind_subgroup_membership[, t + 1]
+    now <- ind_subgroup_membership[, t]
+    later <- ind_subgroup_membership[, t + 1]
     
     # Keep only individuals with data in both time steps
     valid_inds <- !is.na(now) & !is.na(later)
@@ -355,13 +165,21 @@ detect_splits <- function(ind_subgroup_membership) {
     }
   }
   
+  if (length(splits) == 0) {
+    return(data.frame(
+      t = integer(0),
+      split_group = character(0),
+      into1 = character(0),
+      into2 = character(0)
+    ))
+  }
   
   #make a data frame of splits, with original group and subgroups
   splits_df <- data.frame(t = splits, orig_group=NA, sub1=NA, sub2=NA, sub3=NA, sub4=NA, sub5=NA)
   for(i in 1:nrow(splits_df)){
     t <- splits_df$t[i]
-    subgroups_now <- subgroup_data$ind_subgroup_membership[,t]
-    subgroups_later <- subgroup_data$ind_subgroup_membership[,t+1]
+    subgroups_now <- ind_subgroup_membership[,t]
+    subgroups_later <- ind_subgroup_membership[,t+1]
     
     #transfer NAs from now to later and later to now so erroneous splits are not detected
     subgroups_now[which(is.na(subgroups_later))] <- NA
@@ -450,7 +268,9 @@ subsample_matrix <- function(matrix, ts, interval) {
   subsampled_matrix <- matrix[, subsample_indices, drop = FALSE]
   subsampled_ts <- ts[subsample_indices]
   
-  return(list(subsampled_matrix = subsampled_matrix, subsampled_ts = subsampled_ts, subsample_indices = subsample_indices))
+  return(list(ind_subgroup_membership = subsampled_matrix, 
+              subsampled_ts = subsampled_ts, 
+              subsample_indices = subsample_indices))
 }
 
 
@@ -468,9 +288,8 @@ subsample_matrix_midday <- function(matrix, ts) {
   subsampled_ts <- ts[midday_indices]
   
   return(list(
-    subsampled_matrix = subsampled_matrix,
+    ind_subgroup_membership = subsampled_matrix,
     subsampled_ts = subsampled_ts,
-    original_ts = ts,
     subsample_indices = midday_indices
   ))
 }
@@ -496,9 +315,8 @@ subsample_matrix_ndays_midday <- function(matrix, ts, n_days) {
   subsampled_ts <- ts[selected_indices]
   
   return(list(
-    subsampled_matrix = subsampled_matrix,
+    ind_subgroup_membership = subsampled_matrix,
     subsampled_ts = subsampled_ts,
-    original_ts = ts,
     subsample_indices = selected_indices
   ))
 }
@@ -554,9 +372,8 @@ subsample_multiple_intervals <- function(ind_subgroup_membership, ts, intervals)
     matrix_name <- paste0("subsampled_matrix_", gsub(":", "_", interval))
     
     subsampled_results[[matrix_name]] <- list(
-      matrix = result$subsampled_matrix,
+      ind_subgroup_membership = result$ind_subgroup_membership,
       subsampled_ts = result$subsampled_ts,
-      original_ts = result$original_ts,
       subsample_indices = result$subsample_indices
     )
   }
@@ -575,9 +392,8 @@ subsample_multiple_day_intervals <- function(ind_subgroup_membership, ts, day_in
     matrix_name <- paste0("subsampled_matrix_", n_days, "days_midday")
     
     subsampled_results[[matrix_name]] <- list(
-      matrix = result_ndays_midday$subsampled_matrix,
+      ind_subgroup_membership = result_ndays_midday$ind_subgroup_membership,
       subsampled_ts = result_ndays_midday$subsampled_ts,
-      original_ts = result_ndays_midday$original_ts,
       subsample_indices = result_ndays_midday$subsample_indices
     )
   }
@@ -604,13 +420,12 @@ compute_merge_split_time_differences <- function(split_list_samplingrates, merge
     splits_df$event <- "split"
     
     # Extract relevant columns
-    merge_df_subset <- merge_df[, c("subsample_indices", "event")]
-    splits_df_subset <- splits_df[, c("subsample_indices", "event")]
+    merge_df_subset <- merge_df[, c("t", "event")]
+    splits_df_subset <- splits_df[, c("t", "event")]
     
     # Combine and sort
     time_diff <- rbind(splits_df_subset, merge_df_subset) %>%
-      mutate(subsample_indices = as.numeric(subsample_indices)) %>%
-      arrange(subsample_indices)
+      arrange(t)
     
     # Initialize keep flags
     time_diff$keep <- 0
@@ -629,7 +444,7 @@ compute_merge_split_time_differences <- function(split_list_samplingrates, merge
     
     # Filter rows
     time_diff$keep3 <- time_diff$keep + time_diff$keep2
-    time_diff <- time_diff[time_diff$keep3 == 1, c("subsample_indices", "event")]
+    time_diff <- time_diff[time_diff$keep3 == 1, c("t", "event")]
     
     # Split by event
     splits_time_diff <- time_diff[time_diff$event == "split", ]
