@@ -1,17 +1,23 @@
 
-source('coati_function_library_V1.R')
-source('lion_functions.R')
-
-
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(patchwork)
 library(lubridate)
 library(sf)
 library(tidyverse)
 library(fields)
 library(viridis)
 library(tidygraph)
+library(reshape2)
+library(RColorBrewer)
+
+code_dir <- 'C:/Users/egrout/Dropbox/lion/Lion_code/'
+plot_dir <-  'C:/Users/egrout/Dropbox/lion/results/level0/'
+
+setwd(code_dir)
+source('coati_function_library_V1.R')
+source('lion_functions.R')
 
 #load data downloaded from movebank 
 all_nab <- read.csv("../data/raw/all_namibia.csv")
@@ -23,9 +29,7 @@ metadatadir <- "../data/raw/metadata/"
 
 setwd(indir)
 
-
 #looking at which inds have data for each month for each year
-
 
 #put time in posixct format
 all_nab$timestamp <- as.POSIXct(all_nab$timestamp, format = "%Y-%m-%d %H:%M:%OS", tz="UTC")
@@ -49,7 +53,7 @@ gg <- ggplot(presence_long, aes(x = month_year, y = individual.local.identifier,
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 gg
 
-ggsave(filename = "C:/Users/egrout/Dropbox/lion/results/level0/data_presence_all_namib.png", plot = gg, width = 15, height = 8, dpi = 300)
+#ggsave(filename = "C:/Users/egrout/Dropbox/lion/results/level0/data_presence_all_namib.png", plot = gg, width = 15, height = 8, dpi = 300)
 
 count_matrix <- all_nab %>%
   group_by(individual.local.identifier, month_year) %>%
@@ -57,10 +61,10 @@ count_matrix <- all_nab %>%
 
 count_matrix$month_year <- factor(count_matrix$month_year, levels = sort(unique(count_matrix$month_year)))
 
-ggplot(count_matrix, aes(x = month_year, y = individual.local.identifier, fill = count)) +
+pp <- ggplot(count_matrix, aes(x = month_year, y = individual.local.identifier, fill = count)) +
   geom_tile(color = "white") +
   scale_fill_gradient(low = "white", high = "darkblue", na.value = "grey90") +
-  theme_classic() +
+  theme_bw() +
   labs(
     title = "Data Point Counts per Individual per Month-Year",
     x = "Month-Year",
@@ -69,116 +73,26 @@ ggplot(count_matrix, aes(x = month_year, y = individual.local.identifier, fill =
   ) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
+pp
+#ggsave(filename = "C:/Users/egrout/Dropbox/lion/results/level0/data_presence_all_namib3.png", plot = pp, width = 15, height = 10, dpi = 300)
+
+
 #-----------------------------------------------
 
 #look at the proportion of time within 500m at 10am (UTC time), midday local time
 
-#preprocess the data to make xs and ys matrices
-
-##ONLY NEED TO RUN ONCE
-# #filter lion_all to "name", "lon", "lat", "date", "time")
-# nab_filt <- all_nab[,c(9,4,5,3)]
-# colnames(nab_filt) <- c("name", "lon", "lat", "datetime")
-# 
-# #remove NAs
-# nab_filt <- nab_filt[!is.na(nab_filt$lon),]
-# 
-# min(nab_filt$datetime) #for firsttime
-# max(nab_filt$datetime) #for lasttime
-# 
-# 
-# #split by id
-# split_lion <- split(nab_filt, nab_filt$name, drop = F)
-# 
-# #save each individual as own txt file in dropbox rawdata file
-# 
-# allNames <- names(split_lion)
-# 
-# for(i in allNames){
-#   #get name of individual from i of list
-#   saveName <- paste0(i ,".txt")
-#   write.table(split_lion[[i]], file = saveName, sep = "%")
-#   
-# }
-
-#should remove a few days at start - so start from 6th May 
-firsttime <- as.POSIXct('2020-06-07 05:00', tz = 'UTC')
-lasttime  <- as.POSIXct('2025-04-03 11:00', tz = 'UTC')
+load('C:/Users/egrout/Dropbox/lion/data/processed/allnamib_xy_2hour_level0.RData')
+load('C:/Users/egrout/Dropbox/lion/data/processed/allnamib_latlon_2hour_level0.RData') 
 
 
-#first make list of day intervals then remove the times overnight
-dates <- seq.Date(from = as.Date(firsttime), to = as.Date(lasttime), by = "day")
-ts <- as.POSIXct(paste(dates, "10:00:00"), tz = "UTC")
-
-#making a list of all individuals in presedente
-all_files <- sort(list.files())
-
-lats <- lons <- xs <- ys <- matrix(NA, nrow = length(all_files), ncol = length(ts))
-
-for(i in 1:length(all_files)){
-  
-  #filter columns to ones needed
-  tagdata <- read.table(all_files[i], sep = "%")
-  #getting the correct date and time column
-  tagdata <- tagdata[, c(2, 3, 4)]
-  colnames(tagdata) <- c("lon", "lat", "datetime")
-  #make datetime format
-  tagdata$datetime <- as.POSIXct(tagdata$datetime, format="%Y-%m-%d %H:%M:%S", tz="UTC")
-  
-  #round to the nearest hour
-  tagdata$datetime <- round_date(tagdata$datetime, "hour")
-  
-  #getting the last gps point per burst
-  tagdata$test <- !duplicated(tagdata$datetime, fromLast = T )
-  
-  #removing duplicates
-  tagdata <- tagdata[tagdata$test == T,]
-  
-  #remove rows with 0's from the lat and lon
-  tagdata <- tagdata[which(tagdata$lon != 0),]
-  
-  #match times to get lons and lats at each time for that individual
-  lon <- tagdata$lon[match(ts, tagdata$datetime)]
-  lat <- tagdata$lat[match(ts, tagdata$datetime)]
-  
-  lats[i,] <- lat
-  lons[i,] <- lon
-  
-  #to convert to UTM, need to use sf function and for this we need to combine the matrices rows to a dataframe
-  combined_df <- data.frame(lat = lats[i,], lon = lons[i,])
-  
-  #convert NA's to zero for sf functions to work
-  combined_df$lon[is.na(combined_df$lon)] <- 0
-  combined_df$lat[is.na(combined_df$lat)] <- 0
-  
-  #convert to UTM
-  #first need to give the latlon data the correct CRS so it converts to UTM correctly
-  latlon_i <- st_as_sf(x=combined_df, coords=c("lon", "lat"), crs=4326)
-  #convert to UTM
-  utm_i <- st_transform(latlon_i, crs="+proj=utm +zone=33 +south +datum=WGS84 +units=m") #convert UTM to lat/long - coordinates are stored in a geometry column of class 'sfc_POINT'
-  
-  #store eastings and northings in xs and ys matrices
-  xs[i,] <- unlist(map(utm_i$geometry,1))
-  ys[i,] <- unlist(map(utm_i$geometry,2))
-  
-}
-
-#removing the 0's which were converved to eastings and northings and should be replaced with NA
-xs[xs < 0] <- NA
-ys[ys == 10000000] <- NA
-
-
-#make lion ids 
-lion_ids <- data.frame(name = unique(all_nab$individual.local.identifier))
-lion_ids$name <- as.character(lion_ids$name)
+lion_ids <- data.frame(gsub('.txt','',all_files))
+colnames(lion_ids) <- "name"
 
 all_ids <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/metadata/namib_lion_ids.csv", header = F)
 
+#missing metadata for "NPL-28" "NPL-27" "NPL-40"
 
-
-lion_ids$name[!(lion_ids$name %in% all_ids$V1)]
-#missing "OPL-24" "NPL-28" "NPL-27" "NPL-40" from the GPS data
-
+colnames(all_ids) <- c("name", "sex", "group_type", "pride_id", "yob")
 
 #-----MAIN------
 
@@ -195,11 +109,15 @@ all_tracked_idxs <- which(n_tracked==n_inds)
 #subset to times when the data is every 15 mins
 non_na_counts <- colSums(!is.na(xs))
 
+run_script <- F
+
 R = 500
+
+if(run_script == T){
 subgroup_data <- get_subgroup_data(xs, ys, R)
 ff_net <- matrix(NA, nrow = n_inds, ncol = n_inds)
 
-split_by_year <- T
+split_by_year <- F
 year <- unique(format(ts, "%Y"))
 ff_net_year <- array(NA, dim = c(n_inds, n_inds, length(year)))
 dimnames(ff_net_year)[[3]] <- year
@@ -233,11 +151,212 @@ for(i in 1:n_inds){
 }
 
 diag(ff_net) <- NA
-order <- 1:length(n_inds)
-ffnet_reorder <- ff_net[order, order]
 
-visualize_lion_network(ff_net, lion_ids[order,])
-#need to get lion_ids in right format!!
+rownames(ff_net) <- lion_ids$name
+colnames(ff_net) <- lion_ids$name
+
+#save(ff_net, ff_net_year, file = "C:/Users/egrout/Dropbox/lion/data/processed/ff_net_500m.RData")
+}
+
+load("C:/Users/egrout/Dropbox/lion/data/processed/ff_net_500m.RData")
+
+
+#reordering the lion_ids by pride ID
+lion_ids1 <- lion_ids[order(lion_ids$pride_id), ]
+#changing ff_net order to the pride ID order in lion_ids1
+ff_net1 <- ff_net[lion_ids1$name, lion_ids1$name]
+
+#plot just the prides, just the coalitions, or all inds
+#plot partial matrix of females up one side and males along the other -- so focus on pride-coalition associations
+
+groups <- unique(na.omit(lion_ids1$pride_id))
+colors <- setNames(rainbow(length(groups)), groups)
+individual_colors <- setNames(colors[as.character(lion_ids1$pride_id)], lion_ids1$name)
+
+generate_longData <- function(ff_net1, lion_ids1, group_type = "all", individual_colors) {
+  lion_ids2 <- lion_ids1[!is.na(lion_ids1$group_type), ]
+  
+  if (group_type == "pride") {
+    inds <- lion_ids2$name[lion_ids2$group_type == "pride"]
+  } else if (group_type == "coalition") {
+    inds <- lion_ids2$name[lion_ids2$group_type == "coalition"]
+  } else {
+    inds <- lion_ids1$name
+  }
+  
+  # Subset color mapping
+  colours_sub <- individual_colors[inds]
+  
+  # Subset matrix and mask lower triangle
+  sub_net <- ff_net1[inds, inds]
+  sub_net[lower.tri(sub_net)] <- NA
+  
+  longData <- reshape2::melt(sub_net, varnames = c("Var1", "Var2"), value.name = "value")
+  longData$Var1 <- factor(longData$Var1, levels = inds)
+  longData$Var2 <- factor(longData$Var2, levels = inds)
+  
+  return(list(data = longData, inds = inds, colours = colours_sub))
+}
+
+
+#generate subsets
+group_type <- "all"
+matrix_data <- generate_longData(ff_net1, lion_ids1, group_type = group_type, individual_colors)
+
+n <- length(unique(matrix_data$data$Var1))
+a <- ggplot(matrix_data$data, aes(x = Var2, y = Var1)) +
+  geom_raster(aes(fill = value)) +
+  scale_fill_gradient(low = "slateblue4", high = "yellow", na.value = "white") +
+  
+  # Add vertical and horizontal grid lines between cells
+  geom_vline(xintercept = seq(0.5, n + 0.5, by = 1), color = "snow2", linewidth = 0.2) +
+  geom_hline(yintercept = seq(0.5, n + 0.5, by = 1), color = "snow2", linewidth = 0.2) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 9, angle = 90, hjust = 1, vjust = 0.4, color = matrix_data$colours),
+    axis.text.y = element_text(size = 9, color = matrix_data$colours),
+    panel.grid = element_blank(),  # turn off default grid
+    panel.border = element_blank() # keep it clean
+  ) +
+  labs(x = "", y = "", fill = "Proportion", title = paste0("Proportion of time ", group_type, " individuals are within ", R, "m of one another"))
+
+a
+
+if(group_type == "all"){
+  # Create pride-level color mapping (one color per pride)
+  pride_levels <- unique(na.omit(lion_ids1$pride_id))
+  pride_colors <- setNames(rainbow(length(pride_levels)), pride_levels)
+  
+  # Dummy data for the legend (not actually plotted)
+  pride_legend_df <- data.frame(pride_id = pride_levels)
+  
+  gg <- a +
+    # Add dummy points to create legend entries
+    geom_point(data = pride_legend_df,
+               aes(x = NaN, y = NaN, color = pride_id),
+               inherit.aes = FALSE, show.legend = TRUE) +
+    # Manual color scale matching pride_id to colors
+    scale_color_manual(name = "Pride", values = pride_colors) +
+    guides(fill = guide_colorbar(title.position = "top"),
+           color = guide_legend(title.position = "top")) +
+    theme(
+      legend.position = "right",
+      legend.box = "horizontal",
+      legend.title = element_text(hjust = 0.2)
+    )
+  
+  gg
+}
+
+
+#rerunning plots for prides only, coalitions only, and all to put next to each other
+#all <- p+c+gg
+#all
+
+#ggsave(filename = paste0("C:/Users/egrout/Dropbox/lion/results/level0/proptogether_", R, "m_namib_correct.png"), plot = all, width = 20, height = 6, dpi = 300)
+
+
+
+#plot females on one axes and males on the other
+
+# Subset names based on sex
+lion_ids2 <- lion_ids1[!is.na(lion_ids1$sex), ]
+males <- lion_ids2$name[lion_ids2$sex == "M"]
+females <- lion_ids2$name[lion_ids2$sex == "F"]
+
+# Subset the matrix for males (rows) vs females (columns)
+mf_matrix <- ff_net1[males, females]
+
+# Melt the matrix
+longData_mf <- reshape2::melt(mf_matrix, varnames = c("Var1", "Var2"))
+
+# Set the factor levels to preserve order
+longData_mf$Var1 <- factor(longData_mf$Var1, levels = males)
+longData_mf$Var2 <- factor(longData_mf$Var2, levels = females)
+
+# Plot dimensions
+n_row <- length(males)
+n_col <- length(females)
+
+#use individual_colors for axis text color
+p_mf <- ggplot(longData_mf, aes(x = Var2, y = Var1)) +
+  geom_raster(aes(fill = value)) +
+  scale_fill_gradient(low = "slateblue4", high = "yellow", na.value = "white") +
+  
+  # Add custom grid lines
+  geom_vline(xintercept = seq(0.5, n_col + 0.5, by = 1), color = "snow2", linewidth = 0.2) +
+  geom_hline(yintercept = seq(0.5, n_row + 0.5, by = 1), color = "snow2", linewidth = 0.2) +
+  
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      size = 9, angle = 90, hjust = 1, vjust = 0.4,
+      color = individual_colors[as.character(females)]  # female colors
+    ),
+    axis.text.y = element_text(
+      size = 9,
+      color = individual_colors[as.character(males)]  # male colors
+    ),
+    panel.grid = element_blank(),
+    panel.border = element_blank()
+  ) +
+  labs(
+    x = "Females", y = "Males",
+    fill = "Proportion",
+    title = paste0("Proportion of time Males vs Females are within ", R, "m")
+  )
+
+p_mf
+
+#ggsave(filename = paste0("C:/Users/egrout/Dropbox/lion/results/level0/males_vs_females_", R, "m_namib.png"), plot = p_mf, width = 7, height = 6, dpi = 300)
+
+
+#plotting the raw movement data
+
+max_xs <- max(xs, na.rm = T)
+max_ys <- max(ys, na.rm = T)
+min_xs <- min(xs, na.rm = T)
+min_ys <- min(ys, na.rm = T)
+
+#using original ids order
+groups <- unique(na.omit(lion_ids$pride_id))
+colors <- setNames(rainbow(length(groups)), groups)
+individual_colors <- setNames(colors[as.character(lion_ids$pride_id)], lion_ids$name)
+
+colors <- individual_colors[lion_ids$name]
+
+# Set up an empty plot with the right limits
+plot(NA, xlim = c(min_xs, max_xs), ylim = c(min_ys, max_ys), xlab = "X", ylab = "Y", type = "n")
+
+# Add lines for each individual (each row in xs and ys)
+for (i in 1:nrow(xs)) {
+  lines(xs[i, ], ys[i, ], col = colors[i])  # You can replace `col = i` with a custom color vector if needed
+}
+
+#---------------------------------------------------------------------------
+#---------------------------------------------------------------------------
+
+
+#clean the environment to look at each prides subgrouping dynamics in detail
+
+rm(list=c("a", "combined_df", "count_matrix", "gg", "latlon_i", "lats", "lion_ids1", "lion_ids2", "longData_mf", "lons", "matrix_data", "p_mf", "pp", "presence_long", "presence_matrix", "pride_legend_df", "tagdata", "utm_i"))
+
+
+#reordering the lion_ids by pride ID
+lion_ids1 <- lion_ids[order(lion_ids$pride_id), ]
+#changing ff_net order to the pride ID order in lion_ids1
+ff_net1 <- ff_net[lion_ids1$name, lion_ids1$name]
+
+ff_net1[ff_net1==0] <- NaN
+
+#png(height = 1500, width = 1550, units = 'px', filename = paste0(plot_dir,'allnamib_500m_network.png'))
+visualize_lion_network(ff_net1, lion_ids1)
+#dev.off()
+
+
+
+
+
 
 
 

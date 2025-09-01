@@ -18,55 +18,55 @@ setwd(indir)
 
 
 #--------------------------------------------------------------------
-# FORMATTING DATA FROM MOVEBANK -- don't need to run this once the txt files are made into the indir
-#read in data - this is the raw CSV file from movebank
-lion_all <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/lion_highres.csv") 
-#when updating the code with more data, just load in the new csv file downloaded from movebank
-
-#plotted the raw data and can see an outlier - maybe from a collar test elsewhere, so going to remove this
-plot(lion_all$utm.easting, lion_all$utm.northing, col = as.character(lion_all$tag.local.identifier, type = "l"))
-
-#removing data points where the UTM zone is 33N - in the low res, not the high res
-lion_all <- lion_all[!lion_all$utm.zone == "33N",]
-
-#plot(lion_all$utm.easting, lion_all$utm.northing, col = as.character(lion_all$tag.local.identifier, type = "l"))
-
-#put time in posixct format
-lion_all$timestamp <- as.POSIXct(lion_all$timestamp, format = "%Y-%m-%d %H:%M:%OS", tz="UTC")
-
-
-#Need to read in csv and split into files for each individual and save as txt file into the indir
-
-#setting the working directory to the raw data file in dropbox
-
-#filter lion_all to "name", "lon", "lat", "date", "time")
-lion_all_filter <- lion_all[,c(14,4,5,3)]
-colnames(lion_all_filter) <- c("name", "lon", "lat", "datetime")
-
-#remove NAs
-lion_all_filter <- lion_all_filter[!is.na(lion_all_filter$lon),]
-
-min(lion_all_filter$datetime) #for firsttime
-max(lion_all_filter$datetime) #for lasttime
-
-#split by id
-split_lion <- split(lion_all_filter, lion_all_filter$name, drop = F)
-
-#can make each individual as own dataframe in global enviro
-#list2env(lapply(split_lion, as.data.frame.list), .GlobalEnv)
-
-#save each individual as own txt file in dropbox rawdata file
-
-allNames <- names(split_lion)
-
-for(i in allNames){
-   #get name of individual from i of list
-   saveName <- paste0(i ,".txt")
-   write.table(split_lion[[i]], file = saveName, sep = "%")
-
- }
-
-#now each individual has a txt file with the needed info
+# # FORMATTING DATA FROM MOVEBANK -- don't need to run this once the txt files are made into the indir
+# #read in data - this is the raw CSV file from movebank
+# lion_all <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/lion_highres.csv") 
+# #when updating the code with more data, just load in the new csv file downloaded from movebank
+# 
+# #plotted the raw data and can see an outlier - maybe from a collar test elsewhere, so going to remove this
+# plot(lion_all$utm.easting, lion_all$utm.northing, col = as.character(lion_all$tag.local.identifier, type = "l"))
+# 
+# #removing data points where the UTM zone is 33N - in the low res, not the high res
+# lion_all <- lion_all[!lion_all$utm.zone == "33N",]
+# 
+# #plot(lion_all$utm.easting, lion_all$utm.northing, col = as.character(lion_all$tag.local.identifier, type = "l"))
+# 
+# #put time in posixct format
+# lion_all$timestamp <- as.POSIXct(lion_all$timestamp, format = "%Y-%m-%d %H:%M:%OS", tz="UTC")
+# 
+# 
+# #Need to read in csv and split into files for each individual and save as txt file into the indir
+# 
+# #setting the working directory to the raw data file in dropbox
+# 
+# #filter lion_all to "name", "lon", "lat", "date", "time")
+# lion_all_filter <- lion_all[,c(14,4,5,3)]
+# colnames(lion_all_filter) <- c("name", "lon", "lat", "datetime")
+# 
+# #remove NAs
+# lion_all_filter <- lion_all_filter[!is.na(lion_all_filter$lon),]
+# 
+# min(lion_all_filter$datetime) #for firsttime
+# max(lion_all_filter$datetime) #for lasttime
+# 
+# #split by id
+# split_lion <- split(lion_all_filter, lion_all_filter$name, drop = F)
+# 
+# #can make each individual as own dataframe in global enviro
+# #list2env(lapply(split_lion, as.data.frame.list), .GlobalEnv)
+# 
+# #save each individual as own txt file in dropbox rawdata file
+# 
+# allNames <- names(split_lion)
+# 
+# for(i in allNames){
+#    #get name of individual from i of list
+#    saveName <- paste0(i ,".txt")
+#    write.table(split_lion[[i]], file = saveName, sep = "%")
+# 
+#  }
+# 
+# #now each individual has a txt file with the needed info
 
 #---------------------------------------------------------------------
 
@@ -145,15 +145,14 @@ setwd(outdir)
 save(list=c('xs','ys','ts'), file = paste0(outdir,'lion_xy_15min_level0.RData'))
 save(list=c('lats','lons','ts'), file = paste0(outdir,'lion_latlon_15min_level0.RData'))  
 
-#TODO metadata
 setwd(metadatadir)
 lion_ids <- read.csv("lion_ids.csv", header = F)
 colnames(lion_ids) <- c("name", "tag_id", "age", "sex")
 lion_ids$color <- '#0000FF'
-lion_ids$color[which(lion_ids$age == 'Adult' & lion_ids$sex == 'Female')] <- '#FF0000'
-lion_ids$color[which(lion_ids$age == 'Sub-adult' & lion_ids$sex == 'Female')] <- '#FFAA66'
-lion_ids$color[which(lion_ids$age == 'Sub-adult' & lion_ids$sex == 'Male')] <- '#66AAFF'
-lion_ids$color[which(lion_ids$age == 'Juvenile')] <- '#666666'
+lion_ids$color[which(lion_ids$yob == '2012' & lion_ids$sex == 'Female')] <- '#FF0000'
+lion_ids$color[which(lion_ids$yob == 'Sub-adult' & lion_ids$sex == 'Female')] <- '#FFAA66'
+lion_ids$color[which(lion_ids$yob == 'Sub-adult' & lion_ids$sex == 'Male')] <- '#66AAFF'
+lion_ids$color[which(lion_ids$yob == 'Juvenile')] <- '#666666'
 save(lion_ids, file = paste0(outdir, 'lion_ids.RData'))
 
 

@@ -1,22 +1,39 @@
 #helpful for comparing differences between dataframes
 #anti_join(data.frame(t = splits_df2$t), data.frame(t = splits_df$t), by = "t")
 
-visualize_lion_network <- function(net, lion_ids, header){
+visualize_lion_network <- function(net, lion_ids) {
+  n_inds <- nrow(lion_ids)
+  positions <- seq(0, 1, length.out = n_inds)  # equally spaced along the matrix
   
-  zmin <- min(net, na.rm=T)
-  #zmax <- max(net, na.rm=T)
+  # Set margins
+  par(mgp = c(3, 1, 0), mar = c(9, 9, 3, 1))
   
-  #if single matrix, have mar = c(9,9,3,1), if multiple then have mar = c(9,9,3,10)
-  par(mgp=c(3, 1, 0), mar=c(9,9,3,10)) #bottom, left, top, and right
-  #change legend.mar to 8 for plotting multiple together, not legend axis
-  image.plot(net, col = viridis(256), zlim=c(0,1), xaxt= 'n', yaxt = 'n', legend.cex = 7, 
-             legend.width = 1.3,legend.mar = 10, legend.line = 1, axis.args=list(cex.axis=2))
-  axis(1, at = seq(0,1,length.out= nrow(net)), labels = lion_ids$name, las = 2, cex.axis=1.8)
-  axis(2, at = seq(0,1,length.out= nrow(net)), labels = lion_ids$name, las = 2,  cex.axis=1.8)
+  # Draw matrix
+  image.plot(net, col = viridis::viridis(256), zlim = c(0,1),
+             xaxt = 'n', yaxt = 'n',
+             legend.cex = 7,
+             legend.width = 1.3,
+             legend.mar = 10,
+             legend.line = 1,
+             axis.args = list(cex.axis = 2))
   
-  points(rep(-.1, nrow(net)),seq(0,1,length.out=n_inds),col=lion_ids$color, xpd = T, pch = 19, cex = 2.5)
-  points(seq(0,1,length.out=nrow(net)),rep(-.1,n_inds),col=lion_ids$color, xpd = T, pch = 19, cex = 2.5)
+  # Add axis labels
+  axis(1, at = positions, labels = lion_ids$name, las = 2, cex.axis = 1.5)
+  axis(2, at = positions, labels = lion_ids$name, las = 2, cex.axis = 1.5)
+  
+  # Get plotting region limits in user coordinates
+  usr <- par("usr")  # c(xmin, xmax, ymin, ymax)
+  
+  # Place points a fixed distance outside the plot edges
+  x_offset <- usr[1] - 0.015 * (usr[2] - usr[1])  # 2% outside left edge
+  y_offset <- usr[3] - 0.015 * (usr[4] - usr[3])  # 2% below bottom edge
+  
+  # Draw points
+  points(rep(x_offset, n_inds), positions, col = lion_ids$color, xpd = TRUE, pch = 19, cex = 2.5)
+  points(positions, rep(y_offset, n_inds), col = lion_ids$color, xpd = TRUE, pch = 19, cex = 2.5)
 }
+
+
 
 
 #------------------------------------------------------------------------
@@ -506,7 +523,7 @@ plot_individual_distances <- function(individual_id, data) {
   
   ggplot(individual_plot_data, aes(x = Time, y = Distance)) +
     geom_line(aes(color = Other_Individual, group = Other_Individual), size = 0.8, alpha = 0.8) +
-    geom_line(aes(x = Time, y = Rolling_Mean_Distance, color = Other_Individual, group = Other_Individual), size = 6, alpha = 0.3) +
+    #geom_line(aes(x = Time, y = Rolling_Mean_Distance, color = Other_Individual, group = Other_Individual), size = 6, alpha = 0.3) +
     scale_color_manual(values = color_mapping) +
     labs(title = paste("Dyadic Distances for Individual", individual_id),
          x = "Time",
@@ -545,3 +562,8 @@ compute_dyadic_metrics <- function(data) {
   
   return(dyad_array)
 }
+
+
+
+
+
