@@ -74,7 +74,7 @@ xs <- xs[,1:drops[1]]
 ys <- ys[,1:drops[1]]
 ts <- ts[1:drops[1]]
 
-R = 100
+R = 60
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
 ind_subgroup_membership <- subgroup_data$ind_subgroup_membership
@@ -122,13 +122,19 @@ for (n in 1:n_offsets) {
   
   subsampled_time_results_cut <- subsample_multiple_intervals(ind_subgroup_membership_cut, ts_cut, intervals)
   
-  # Detect events
-  split_list <- detect_splits_across_sample_rates(subsampled_time_results_cut, include_singletons = F)
-  merge_list <- detect_merges_across_sample_rates(subsampled_time_results_cut, include_singletons = F)
   
-  # Store counts
-  split_events_all[n, ] <- sapply(split_list, nrow)
-  merge_events_all[n, ] <- sapply(merge_list, nrow)
+  # Detect events for each interval
+  for (interval in seq_along(subsampled_time_results_cut)){
+    
+  ind_sub_memb <- subsampled_time_results_cut[[interval]]$ind_subgroup_membership
+    
+  split_count <- nrow(detect_splits(ind_sub_memb))
+  merge_count <- nrow(detect_merges(ind_sub_memb))
+  
+  split_events_all[n, interval] <- split_count
+  merge_events_all[n, interval] <- merge_count
+  
+  }
   
   print(paste("Offset", n, "done"))
 }
@@ -149,12 +155,11 @@ split_merge_time_offset <- rbind(split_long, merge_long)
 
 }
 
-#save(split_merge_time_offset,split_events_all, merge_events_all, file = paste0(data_dir, "time_offset_split_merge.Rdata"))
 
-#save(split_merge_time_offset,split_events_all, merge_events_all, file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
 
-load(file = paste0(data_dir, "time_offset_split_merge.Rdata"))
-#load(file = paste0(data_dir, "time_offset_split_merge_no_singletons.Rdata"))
+#save(split_merge_time_offset,split_events_all, merge_events_all, file = paste0(data_dir, "time_offset_split_merge_60m.Rdata"))
+
+load(file = paste0(data_dir, "time_offset_split_merge_60m.Rdata"))
 
 # Plot
 g0 <- ggplot(split_merge_time_offset, aes(x = offset, y = n_events, color = interval)) +
@@ -201,8 +206,8 @@ for (i in seq_along(day_shifts)) {
   for (j in seq_along(subsampled_day_results)) {
     subsampled_i_j <- subsampled_day_results[[j]]
     
-    split_list_day <- detect_splits(subsampled_i_j$matrix)
-    merge_list_day <- detect_merges(subsampled_i_j$matrix)
+    split_list_day <- detect_splits(subsampled_i_j$ind_subgroup_membership)
+    merge_list_day <- detect_merges(subsampled_i_j$ind_subgroup_membership)
     
     split_events_by_day[i, j] <- nrow(split_list_day)
     merge_events_by_day[i, j] <- nrow(merge_list_day)
@@ -234,18 +239,16 @@ split_merge_day_offset <- rbind(split_day_long, merge_day_long)
 }
 
 
-#save(split_merge_day_offset, split_events_by_day, merge_events_by_day, file = paste0(data_dir, "day_offset_split_merge.Rdata"))
-
-#save(split_merge_day_offset, split_events_by_day, merge_events_by_day, file = paste0(data_dir, "day_offset_split_merge_no_singletons.Rdata"))
+#save(split_merge_day_offset, split_events_by_day, merge_events_by_day, file = paste0(data_dir, "day_offset_split_merge_60m.Rdata"))
 
 Singletons <- T
 
 if(Singletons == T){
 
-load(file = paste0(data_dir, "time_offset_split_merge.Rdata"))
-load(file = paste0(data_dir, "day_offset_split_merge.Rdata"))
-title <- "Variation in Detected Splits and Merges by Start Day with Singletons"
-title2 <- "Distribution of Split and Merge Events by Sampling Interval - With Singleton Events"
+load(file = paste0(data_dir, "time_offset_split_merge_60m.Rdata"))
+load(file = paste0(data_dir, "day_offset_split_merge_60m.Rdata"))
+title <- "Variation in Detected Splits and Merges by Start Day"
+title2 <- "Distribution of Split and Merge Events by Sampling Interval"
 filename <- 'sampling_interval_splitsmerges_withsingles_2yr.png'
 
 }else{
@@ -350,9 +353,10 @@ for (name in element_names) {
   ffnet_reorder <- ff_net[new_order, new_order]
   
   # Save the plot with the correct title
-  png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir, name, '_subgroup_network_100m_2yr.png'))
+  png(height = 600, width = 650, units = 'px', filename = paste0(plot_dir, name, '_subgroup_network_60m_2yr.png'))
   
   visualize_network_matrix_trago(ffnet_reorder, lion_ids[new_order,])
+  mtext(name)
   
   dev.off()  # Close the PNG device
 }

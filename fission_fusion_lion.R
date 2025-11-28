@@ -182,7 +182,7 @@ for (i in 1:length(Rs_j)){
 
 #looking at which individuals split with one another
 
-R = 100
+R = 60
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
 
@@ -323,7 +323,7 @@ dev.off()
 #now want to work out how long they were apart for...
 # Detect events
 
-R = 100
+R = 60
 subgroup_data <- get_subgroup_data(xs, ys, R)
 #function code in lion_functions
 splits_df <- detect_splits(subgroup_data$ind_subgroup_membership)
@@ -1568,7 +1568,7 @@ ggsave(filename = paste0(plot_dir, 'dyadic_distance_bef_aft.png'), plot = gg, wi
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
-
+make_plots <- F
 if(make_plots == T){
 
 #now want to make the network into an animation over time for before Simba died (as can't get it to work when he's not in the group)
@@ -1723,7 +1723,7 @@ animate(network_plot, width = 8, height = 6, units = "in", fps = 30, res = 300, 
 
 #---------------------------------------------------------------------
 
-R = 100
+R = 60
 subgroup_data <- get_subgroup_data(xs, ys, R)
 #function code in lion_functions
 splits_df <- detect_splits(subgroup_data$ind_subgroup_membership)

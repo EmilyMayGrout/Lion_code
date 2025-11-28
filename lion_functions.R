@@ -25,8 +25,8 @@ visualize_lion_network <- function(net, lion_ids) {
   usr <- par("usr")  # c(xmin, xmax, ymin, ymax)
   
   # Place points a fixed distance outside the plot edges
-  x_offset <- usr[1] - 0.015 * (usr[2] - usr[1])  # 2% outside left edge
-  y_offset <- usr[3] - 0.015 * (usr[4] - usr[3])  # 2% below bottom edge
+  x_offset <- usr[1] - 0.010 * (usr[2] - usr[1])  # 2% outside left edge
+  y_offset <- usr[3] - 0.010 * (usr[4] - usr[3])  # 2% below bottom edge
   
   # Draw points
   points(rep(x_offset, n_inds), positions, col = lion_ids$color, xpd = TRUE, pch = 19, cex = 2.5)

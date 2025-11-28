@@ -15,6 +15,9 @@ library(ggmap)
 library(sp)
 library(ggsn)
 library(ggspatial)
+library(sf)
+library(rnaturalearthdata)
+
 
 #csv downloaded from movebank, only gps, includes 
 
@@ -59,10 +62,11 @@ point_colors <- c('#1f78b4','#b2df8a','#33a02c','#fb9a99','#fdbf6f','#ff7f00')  
 
 #add google map under the points
 #register_google(key="xxx")
+#register_stadiamaps("xxx")
+#Sys.setenv(STADIA_MAPS_API_KEY = "")
 has_google_key()
 
 map = get_map(location = c(lon = mean(lion_timespan$location.long), lat= mean(lion_timespan$location.lat)), zoom=11, maptype="satellite")
-
 
 #first make the map
 g <- ggmap(map)+ 
@@ -141,8 +145,6 @@ for (i in seq(122, length(unique_dates), by = 1)) {
   
   # Animate and save the video
   lion_vid <- animate(g, renderer = av_renderer(), height = 1000, width = 1000, fps = 10, duration = 60)
-  
-
 anim_save(filename = paste0(plot_dir, "loc_time/lion_movement_loctime_", as.Date(start_date), "_to_", as.Date(end_date), "track.mp4"), animation = lion_vid)
 
 }
@@ -199,3 +201,36 @@ for (i in seq(1, length(unique_dates), by = 10)) {
 
 
 #-------------------------------------------------------------------------------------
+
+
+#zoomed out plot for where the study site is:
+
+# mean location
+lon <- 13.98058
+lat <- -19.4362
+lion_point <- st_point(c(lon, lat)) |> st_sfc(crs = 4326)
+
+africa <- ne_countries(continent = "Africa", returnclass = "sf")
+
+g <- ggplot() +
+  geom_sf(data = africa, fill = "gray95", color = "gray40", linewidth = 0.5) +
+  geom_sf(data = lion_point, color = "purple", size = 3) +
+  coord_sf(
+    xlim = c(-20, 50),   # adjust horizontal zoom
+    ylim = c(-40, 40)  # adjust vertical zoom
+  ) +
+  theme_minimal() +
+  labs(
+    title = "",
+    x = "Longitude", y = "Latitude"
+  )
+
+ggsave(filename = paste0(plot_dir, "studylocation.png"), plot = g, width = 6, height = 7, dpi = 300)
+
+
+
+
+
+
+
+

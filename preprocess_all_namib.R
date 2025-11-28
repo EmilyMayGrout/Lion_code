@@ -6,6 +6,10 @@ library(sf)
 library(tidyverse)
 library(hms)
 library(patchwork)
+library(reshape2)
+library(ggplot2)
+
+
 
 setwd("C:/Users/egrout/Dropbox/lion/data/raw/gps/all_nab/")
 plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level0/'
@@ -22,6 +26,9 @@ all_nab$month_year <- format(all_nab$timestamp, "%Y-%m")
 all_nab$time_of_day <- as.numeric(format(all_nab$timestamp, "%H")) +
   as.numeric(format(all_nab$timestamp, "%M")) / 60
 
+tag_summary <- data.frame(table(all_nab$tag.local.identifier, all_nab$individual.local.identifier))
+
+
 g1 <- ggplot(all_nab, aes(x = as_hms(time_of_day))) +
   geom_histogram(binwidth = 0.1, fill = "steelblue", color = "blue") +
   scale_x_continuous(breaks = 0:24) +
@@ -30,6 +37,7 @@ g1 <- ggplot(all_nab, aes(x = as_hms(time_of_day))) +
   facet_wrap(~individual.local.identifier, ncol = 3)+
   theme_classic(base_size = 12)
 
+g1
 ggsave(filename = paste0(plot_dir, "histdatacount_eachhour_perind.png"),
        plot = g1, width = 16, height = 22, dpi = 300)
 
@@ -54,6 +62,7 @@ g2 <- ggplot(all_nab2, aes(x = as_hms(time_of_day))) +
   facet_wrap(~facet_label, ncol = 4, scales = "free_x", strip.position = "top"   # put axis labels under each facet
   ) +
   theme_classic(base_size = 12)
+g2
 
 ggsave(filename = paste0(plot_dir, "histdatacount_eachhour_perindpertag.png"),
        plot = g2, width = 20, height = 28, dpi = 300)
@@ -69,8 +78,8 @@ min(all_nab_filter$datetime) #for firsttime
 max(all_nab_filter$datetime) #for lasttime
 
 presence_matrix <- all_nab %>%
-  group_by(individual.local.identifier, month_year) %>%
-  summarise(present = 1, .groups = "drop") %>%
+  dplyr::group_by(individual.local.identifier, month_year) %>%
+  dplyr::summarise(present = 1, .groups = "drop") %>%
   pivot_wider(names_from = month_year, values_from = present, values_fill = 0)
 
 # Convert to long format for ggplot
@@ -93,7 +102,7 @@ gg
 #when is each TAG collecting data?
 presence_matrix2 <- all_nab %>%
   group_by(tag.local.identifier, month_year) %>%
-  summarise(present = 1, .groups = "drop") %>%
+  dplyr::summarise(present = 1, .groups = "drop") %>%
   pivot_wider(names_from = month_year, values_from = present, values_fill = 0)
 
 # Convert to long format for ggplot
@@ -190,7 +199,7 @@ for(i in 1:length(all_files)){
   
   # keep closest fix within ±10 min
   final <- matched %>%
-    filter(diff_mins <= 10) %>%
+    filter(diff_mins <= 20) %>%
     group_by(date, target) %>%
     slice_min(diff_mins, with_ties = FALSE) %>%
     ungroup()
@@ -238,6 +247,28 @@ for(i in 1:length(all_files)){
 xs[xs < 0] <- NA
 ys[ys == 10000000] <- NA
 
+month_year <- format(ts, "%Y-%m")  # vector same length as ncol(xs)
+presence_raw <- ifelse(!is.na(xs) | !is.na(ys), 1, 0)
+unique_months <- sort(unique(month_year))
+presence_month <- matrix(0, nrow = nrow(xs), ncol = length(unique_months))
+rownames(presence_month) <- all_ids$name
+colnames(presence_month) <- unique_months
+
+for (i in seq_along(unique_months)) {
+  cols_in_month <- which(month_year == unique_months[i])
+  presence_month[, i] <- apply(presence_raw[, cols_in_month, drop = FALSE], 1, max)
+}
+presence_long <- melt(presence_month)
+colnames(presence_long) <- c("individual", "month", "present")
+ggplot(presence_long, aes(x = month, y = individual, fill = factor(present))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("0" = "grey85", "1" = "steelblue")) +
+  theme_minimal() +
+  labs(x = "Month", y = "Individual", fill = "Data present") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
 setwd("C:/Users/egrout/Dropbox/lion/data/processed/")
 save(list=c('xs','ys','ts'), file = 'allnamib_xy_2hour_level1.RData')
 save(list=c('lats','lons','ts'), file = 'allnamib_latlon_2hour_level1.RData') 
@@ -272,11 +303,6 @@ save(all_ids, file = 'allnamib_ids.RData')
 
 
 
-
-
-
-
-
 #checking whether data collection matches original data plot
 ind_names <- all_ids$name
 
@@ -295,11 +321,13 @@ df <- as.data.frame(xs) %>%
   select(individual, datetime, xs)
 
 
+df$month_year <- floor_date(df$datetime, "month")
+
 # Count non-NA fixes per month-year per individual
 coverage_df <- df %>%
-  mutate(month_year = floor_date(datetime, "month")) %>%
   group_by(individual, month_year) %>%
-  summarise(n_fixes = sum(!is.na(xs)), .groups = "drop")
+  dplyr::summarise(n_fixes = sum(!is.na(xs)), 
+            .groups = "drop")
 
 coverage_df$month_year <- as.Date(coverage_df$month_year) 
 
@@ -354,7 +382,7 @@ ggsave(filename = paste0(plot_dir, "comparing_beforeafter_processing.png"),
 # Step 1: Summarize each tag per individual
 tag_summary <- all_nab %>%
   group_by(individual.local.identifier, tag.local.identifier) %>%
-  summarise(
+  dplyr::summarise(
     start_date = min(as.Date(timestamp)),
     end_date   = max(as.Date(timestamp)),
     .groups = "drop"
@@ -364,7 +392,7 @@ tag_summary <- all_nab %>%
 tag_monthly <- all_nab %>%
   mutate(month_year = floor_date(as.Date(timestamp), "month")) %>%
   group_by(individual.local.identifier, tag.local.identifier, month_year) %>%
-  summarise(n_fixes = n(), .groups = "drop")
+  dplyr::summarise(n_fixes = n(), .groups = "drop")
 
 all_ids$individual.local.identifier <- all_ids$name
 
@@ -386,13 +414,17 @@ g4 <- ggplot() +
                    y = individual.local.identifier,
                    yend = individual.local.identifier,
                    color = as.factor(tag.local.identifier)),
-               size = 20, alpha = 0.7,
+               size = 17, alpha = 0.7,
                show.legend = FALSE) +
   # Tiles for monthly fix counts
   geom_tile(data = tag_monthly,
             aes(x = month_year, y = individual.local.identifier,
                 fill = n_fixes, width = 25), height = 0.5) +
   scale_fill_gradient(low = "white", high = "black") +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  )+
   theme_classic(base_size = 25) +
   labs(
     x = "Date",
@@ -401,12 +433,77 @@ g4 <- ggplot() +
     color = "Tag ID",
     title = "Tag Deployment and Monthly Data Coverage per Individual"
   ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  facet_wrap(~pride_id, scales = "free_y")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))#+
+  #facet_wrap(~pride_id, scales = "free_y")
 
 
-ggsave(filename = paste0(plot_dir, "rawdata_withtaginfo_bypride.png"),
-       plot = g4, width = 25, height = 16, dpi = 300)
+ggsave(filename = paste0(plot_dir, "rawdata_withtaginfo.png"),
+       plot = g4, width = 25, height = 26, dpi = 300)
+
+
+#add to this plot lines for each individual the date they died
+
+dod <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/metadata/lion_dod.csv")
+
+dod_ym <- dod %>%
+  mutate(
+    DOD_clean = trimws(DOD_clean),
+    DOD_clean = ifelse(DOD_clean == "" | DOD_clean == "still alive", NA, DOD_clean)
+  ) %>%
+  # Keep only rows with YYYY-MM or YYYY-MM-DD pattern
+  filter(grepl("^\\d{4}-\\d{2}", DOD_clean)) %>%
+  mutate(
+    DOD_clean = ifelse(grepl("^\\d{4}-\\d{2}$", DOD_clean),
+                       paste0(DOD_clean, "-15"), DOD_clean), #make exact day to middle of month for plotting
+    DOD_clean = as.Date(DOD_clean, format = "%Y-%m-%d")
+  )
+tag_summary <- tag_summary %>%
+  left_join(dod_ym %>% select(id, DOD_clean),
+            by = c("individual.local.identifier" = "id"))
+
+tag_summary$DOD_clean <- as.Date(tag_summary$DOD_clean)
+
+
+#add the inds we know died but not sure when:
+dod_unk <- dod %>%
+  mutate(
+    DOD_clean = trimws(DOD_clean),
+    DOD_clean = ifelse(DOD_clean == "" | DOD_clean == "still alive", NA, DOD_clean)
+  ) %>%
+  # Keep only rows with just the year (YYYY)
+  filter(grepl("^\\d{4}$", DOD_clean)) %>%
+  mutate(
+    # Make a middle-of-year date for plotting
+    DOD_clean = as.Date(paste0(DOD_clean, "-07-01"))
+  )
+
+ts_max <- as.Date("2026-01-01")
+dod_unk <- dod_unk %>%
+  mutate(
+    plot_date = ts_max   # all points at the end of the timeline
+  )
+
+dod_unk <- dod_unk %>%
+  mutate(year_label = substr(DOD_clean, 1, 4)) 
+
+
+g5 <- g4 +
+  geom_point(data = tag_summary %>% filter(!is.na(DOD_clean)),
+                    aes(x = DOD_clean, y = individual.local.identifier),
+                    shape = 21, size = 10, fill = "red", color = "black") + 
+  geom_point(data = dod_unk %>% left_join(tag_summary, by = c("id" = "individual.local.identifier")),
+           aes(x = plot_date, y = id),
+           shape = 21, size = 5, fill = "blue", color = "black") +
+  scale_fill_gradient(low = "white", high = "black")+
+  geom_text(data = dod_unk %>% left_join(tag_summary, by = c("id" = "individual.local.identifier")),
+            aes(x = plot_date + 15,  # shift slightly to the right
+                y = id,
+                label = year_label),
+            hjust = 0, size = 10, color = "blue") 
+
+ggsave(filename = paste0(plot_dir, "rawdata_tagid_dod.png"),
+       plot = g5, width = 25, height = 26, dpi = 300)
+
 
 
 #looking at data coverage per pride for the processed data
@@ -437,12 +534,22 @@ ggsave(filename = paste0(plot_dir, "processeddata_bypride.png"),
 
 
 
+#add dod and unk dod to all_ids dataframe
+dod_unk$DOD_clean <- as.Date(dod_unk$DOD_clean)
+dod_unk <- dod_unk[,1:9]
+dod_unk$known <- F
+dod_ym$DOD_clean <- as.Date(dod_ym$DOD_clean)
+dod_ym$known <- T
+all_dod <- rbind(dod_ym, dod_unk)
 
 
+all_ids2 <- merge(all_ids, all_dod[,c(1,9,10)], by.x = "name", by.y = "id", all = TRUE)
 
+# Reorder files to match the order in all_ids$name
+all_ids <- all_ids2[match(allNames, all_ids2$name), ]
 
+rownames(all_ids) <- 1:nrow(all_ids)
 
-
-
+save(all_ids, file = 'allnamib_ids_withdod.RData')
 
 

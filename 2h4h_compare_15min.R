@@ -88,7 +88,7 @@ ts <- ts[1:drops[1]]
 indices_in_ts <- match(t_sub, ts)
 indices_in_ts <- indices_in_ts[!is.na(indices_in_ts)]
 
-sample_rate <- "2h4h"
+sample_rate <- "15min"
 
 if(sample_rate == "15min"){
   
@@ -104,7 +104,7 @@ if(sample_rate == "15min"){
   }
 
 
-R = 600
+R = 60
 
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
@@ -140,7 +140,7 @@ R = 600
 subgroup_data <- get_subgroup_data(xs, ys, R)
 
 ff_net <- matrix(NA, nrow = n_inds, ncol = n_inds)
-split_by_month <- T
+split_by_month <- F
 year_months <- unique(format(ts, "%Y-%m"))
 ff_net_month <- array(NA, dim = c(n_inds, n_inds, length(year_months)))
 dimnames(ff_net_month)[[3]] <- year_months
@@ -194,7 +194,7 @@ dev.off()
 
 #--------------------------------------------------------------
 
-run_consistenct <- F
+run_consistency <- F
 if(run_consistency == T){
 
 #function code in lion_functions
@@ -326,4 +326,164 @@ ggsave(filename = paste0(plot_dir, 'splitmerge_overtime_', R, 'm.png'), plot = g
 
 }
 
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+#2h/4h vs 15 min prop time each is alone
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+
+n_inds <- nrow(xs)
+n_times <- ncol(xs)
+
+singles <- matrix(ncol = n_times, nrow = n_inds)
+
+for (i in 1:ncol(subgroup_data$ind_subgroup_membership)) {
+  for (j in 1:n_inds) {
+    
+    group_i_j <- subgroup_data$ind_subgroup_membership[j, i]
+    group_i <- subgroup_data$ind_subgroup_membership[, i]
+    
+    if (is.na(group_i_j)) {
+      singles[j, i] <- NA
+    } else {
+      # Count how many individuals are in the same subgroup
+      same_group_members <- sum(group_i == group_i_j, na.rm = TRUE)
+      
+      # If only this individual is in that group, mark as single
+      if (same_group_members == 1) {
+        singles[j, i] <- 1
+      } else {
+        singles[j, i] <- 0
+      }
+    }
+  }
+}
+
+
+# Get month index for each time point
+month_indx <- format(ts, "%m")
+months <- sort(unique(month_indx))  
+
+# Initialize matrices
+alone_count <- matrix(NA, nrow = n_inds, ncol = length(unique(month_indx)))
+alone_prop <- matrix(NA, nrow = n_inds, ncol = length(unique(month_indx)))
+
+# Column names as months
+months <- sort(unique(month_indx))
+colnames(alone_count) <- months
+colnames(alone_prop) <- months
+
+# Loop through each month
+for (i in seq_along(months)) {
+  ts_month_i <- which(month_indx == months[i])
+  #print(ts[min(ts_month_i)])
+  #print(ts[max(ts_month_i)])
+  
+  singles_month_i <- singles[, ts_month_i, drop = FALSE]
+  
+  # Count how often individual is alone (value == 1)
+  alone_count[, i] <- rowSums(singles_month_i == 1, na.rm = TRUE)
+  
+  # Count number of valid time points (not NA)
+  valid_counts <- rowSums(!is.na(singles_month_i))
+  
+  # Proportion of time alone = alone / valid observations
+  alone_prop[, i] <- alone_count[, i] / valid_counts
+}
+
+# Add individual IDs as a column for reshaping
+alone_count_df <- as.data.frame(alone_count)
+alone_count_df$id <- 1:nrow(alone_count_df)
+alone_prop_df <- as.data.frame(alone_prop)
+alone_prop_df$id <- 1:nrow(alone_prop_df)
+
+alone_count_long <- alone_count_df %>%
+  pivot_longer(cols = -id, names_to = "month", values_to = "alone_count")
+alone_prop_long <- alone_prop_df %>%
+  pivot_longer(cols = -id, names_to = "month", values_to = "alone_prop")
+
+alone_long_combined <- left_join(alone_count_long, alone_prop_long, by = c("id", "month"))
+
+alone_long_combined <- alone_long_combined %>%
+  mutate(name = lion_ids$name[id])
+
+
+gg <- ggplot(alone_long_combined, aes(x=month, y = alone_prop, colour = name))+
+  geom_point(size = 3)+
+  geom_line(aes(group = name), alpha = 0.5, linewidth = 2)+
+  labs(
+    x = "Month",
+    y = "Proportion of time alone",
+    colour = "Individual ID"
+  )+
+  theme_classic()
+gg
+
+ggsave(filename = paste0(plot_dir, 'prop_timealone_', sample_rate, '.png'), plot = gg, width = 8, height = 5, dpi = 300)
+
+
+
+
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#Proportion of time group is together vs any other situation - each month
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+
+
+
+together <- matrix(ncol = n_times, nrow = 1)
+
+for (i in 1:ncol(subgroup_data$ind_subgroup_membership)) {
+  
+  #if all individuals are in the same subgroup and there are 1 or no inds who are NA, the full group is together (NA rule because of Simba)
+  if(length(unique(na.omit(subgroup_data$ind_subgroup_membership[,i]))) == 1 & sum(is.na(subgroup_data$ind_subgroup_membership[,i])) <= 1) {
+    together[i] <- 1
+  } else{
+    together[i] <- 0
+    
+  }
+}
+
+together_prop <- matrix(NA, nrow = 1, ncol = length(unique(month_indx)))
+colnames(together_prop) <- months
+
+# code copied from above
+for (i in seq_along(months)) {
+  ts_month_i <- which(month_indx == months[i])
+  together_month_i <- together[ts_month_i, drop = FALSE]
+  
+  # Count how often individual is alone (value == 1)
+  together_count <- sum(together_month_i == 1, na.rm = TRUE)
+  
+  # Count number of valid time points (not NA)
+  valid_counts <- sum(!is.na(together_month_i))
+  
+  # Proportion of time together = together / valid observations
+  together_prop[i] <- together_count / valid_counts
+}
+
+
+together_long <- as.data.frame(t(together_prop))
+colnames(together_long) <- "prop_together"
+together_long$month <- sort(unique(month_indx))  
+
+gg <- ggplot(together_long, aes(x=month, y = prop_together, group = 1))+
+  geom_point(size = 3)+
+  geom_line()+
+  labs(
+    x = "Month",
+    y = "Proportion of time together"
+  )+
+  theme_classic()
+
+gg
+
+ggsave(filename = paste0(plot_dir, 'prop_timetogether', sample_rate, '.png'), plot = gg, width = 8, height = 5, dpi = 300)
 

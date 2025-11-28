@@ -10,15 +10,15 @@ library(patchwork)
 library(hms)
 
 code_dir <- 'C:/Users/egrout/Dropbox/lion/Lion_code/'
-plot_dir <-  'C:/Users/egrout/Dropbox/lion/results/level0/'
+plot_dir <-  'C:/Users/egrout/Dropbox/lion/results/level1/'
 
 setwd(code_dir)
 source('coati_function_library_V1.R')
 source('lion_functions.R')
 
 setwd("C:/Users/egrout/Dropbox/lion/data/processed/")
-load('allnamib_xy_2hour_level0.RData')
-load('allnamib_latlon_2hour_level0.RData') 
+load('allnamib_xy_2hour_level1.RData')
+load('allnamib_latlon_2hour_level1.RData') 
 load('allnamib_ids.RData')
 
 n_inds <- nrow(xs)
@@ -71,6 +71,8 @@ colors <- rainbow(length(unique_individuals))
 color_mapping <- setNames(colors, unique_individuals)
 
 
+make_plot <- F
+if(make_plot == T){
 for(i in unique(dyadic_distances$Individual.1)){
 
 ind_i <- i
@@ -117,7 +119,7 @@ plot
 ggsave(filename = paste0(plot_dir, "allnamib_dyadicdist_", ind_i, ".png"), plot = plot, width = 12, height = 5, dpi = 300)
 
 }
-
+}
 
 #-----------------------------------------------------------
 #make matrix plots for prop time together for dyads that at somepoint were within 600m of one another 
@@ -171,7 +173,7 @@ mean_prox_ind_monthly_df <- do.call(rbind, mean_prox_ind_monthly)
 #adding 01 to date, so its the first of each month
 mean_prox_ind_monthly_df$YearMonth <- as.Date(paste0(mean_prox_ind_monthly_df$YearMonth, "-01"))
 
- mean_prox_ind_monthly_df[mean_prox_ind_monthly_df$MeanProximity == 0,] <- NA
+mean_prox_ind_monthly_df[mean_prox_ind_monthly_df$MeanProximity == 0,] <- NA
 
 color_mapping <- setNames(all_ids$color, all_ids$name)
 
@@ -244,7 +246,7 @@ ggplot(mean_prox_ind_monthly_df, aes(x = YearMonth, y = MeanProximity, color = I
 load("allnamib_60m_ffnet_monthly.RData")
 
 #look at one of the months plots 
-visualize_lion_network(ff_net_month[,,15], all_ids)
+visualize_lion_network(ff_net_month[,,45], all_ids)
 
 
 #-------------------------------------------------------
