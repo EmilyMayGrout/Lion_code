@@ -1,4 +1,5 @@
 #this script is making the xs, ys, and ts matrix for all namibia GPS data
+#
 
 #LIBRARIES
 library(lubridate)
@@ -8,15 +9,16 @@ library(hms)
 library(patchwork)
 library(reshape2)
 library(ggplot2)
+library(data.table)
 
 
 
 setwd("C:/Users/egrout/Dropbox/lion/data/raw/gps/all_nab/")
-plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level0/'
+plot_dir <- 'C:/Users/egrout/Dropbox/lion/results/level2/'
 
 #load data downloaded from movebank 
 all_nab <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/all_namibia.csv")
-all_ids <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/metadata/namib_lion_ids.csv", header = F)
+all_ids <- read.csv("C:/Users/egrout/Dropbox/lion/data/raw/metadata/namib_lion_ids_V2.csv", header = F)
 colnames(all_ids) <- c("name", "sex", "group_type", "pride_id", "yob")
 
 #put time in posixct format
@@ -37,9 +39,8 @@ g1 <- ggplot(all_nab, aes(x = as_hms(time_of_day))) +
   facet_wrap(~individual.local.identifier, ncol = 3)+
   theme_classic(base_size = 12)
 
-g1
-ggsave(filename = paste0(plot_dir, "histdatacount_eachhour_perind.png"),
-       plot = g1, width = 16, height = 22, dpi = 300)
+#ggsave(filename = paste0(plot_dir, "histdatacount_eachhour_perind.png"),
+#       plot = g1, width = 16, height = 22, dpi = 300)
 
 #does each lion have one collar? - no, some have 2, so need to find out which collars are the ones we want to use for analysis
 # make a lookup table for IDs
@@ -62,10 +63,9 @@ g2 <- ggplot(all_nab2, aes(x = as_hms(time_of_day))) +
   facet_wrap(~facet_label, ncol = 4, scales = "free_x", strip.position = "top"   # put axis labels under each facet
   ) +
   theme_classic(base_size = 12)
-g2
 
-ggsave(filename = paste0(plot_dir, "histdatacount_eachhour_perindpertag.png"),
-       plot = g2, width = 20, height = 28, dpi = 300)
+#ggsave(filename = paste0(plot_dir, "histdatacount_eachhour_perindpertag.png"),
+#       plot = g2, width = 20, height = 28, dpi = 300)
 
 
 all_nab_filter <- all_nab[,c(9,4,5,3)]
@@ -96,7 +96,6 @@ gg <- ggplot(presence_long, aes(x = month_year, y = individual.local.identifier,
   theme_classic() +
   labs(x = "Month-Year", y = "Individual", fill = "Data Present", title = "Raw Data Presence") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-gg
 
 #--------------------------------
 #when is each TAG collecting data?
@@ -118,10 +117,9 @@ g3 <- ggplot(presence_long2, aes(x = month_year, y = as.factor(tag.local.identif
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
         axis.text.y = element_text(angle = 0, hjust = 1, size = 9))
   
-g3
 
-ggsave(filename = paste0(plot_dir, "datapertag.png"),
-       plot = g3, width = 15, height = 8, dpi = 300)
+#ggsave(filename = paste0(plot_dir, "datapertag.png"),
+#       plot = g3, width = 15, height = 8, dpi = 300)
 
 #--------------------------------
 
@@ -170,15 +168,6 @@ for(i in 1:length(all_files)){
   #make datetime format
   tagdata$datetime <- as.POSIXct(tagdata$datetime, format="%Y-%m-%d %H:%M:%S", tz="UTC")
   
-  #round to the nearest hour
-  # tagdata$datetime <- round_date(tagdata$datetime, "2 hours")
-  # 
-  # #getting the last gps point per burst
-  # tagdata$test <- !duplicated(tagdata$datetime, fromLast = T )
-  # 
-  # #removing duplicates
-  # tagdata <- tagdata[tagdata$test == T,]
-  # 
   # define target hours
   target_hours <- c(6, 10, 14, 18, 20, 22, 0, 2, 4)
   
@@ -192,29 +181,33 @@ for(i in 1:length(all_files)){
   ) %>%
     mutate(target_time = as.POSIXct(date) + hours(target))
   
-  # join with actual fixes and compute time differences
+  
+  # join with actual fixes and get the closest time to the day and night target times
+  #if the hours are during the day, give 130 min for the window (since they dont move in the day), and +-20 mins for night
   matched <- grid %>%
     left_join(tagdata, by = "date") %>%
-    mutate(diff_mins = abs(as.numeric(difftime(datetime, target_time, units = "mins"))))
-  
-  # keep closest fix within ±10 min
-  final <- matched %>%
-    filter(diff_mins <= 20) %>%
+    mutate(
+      # Set lower and upper bounds depending on target hour
+      lower_bound = case_when(
+        target %in% c(6, 10) ~ target_time - 20*60,  # 20 mins before
+        TRUE ~ target_time - 20*60 ), # 20 mins before for night
+      
+      upper_bound = case_when(
+        target %in% c(6, 10) ~ target_time + 150*60, # 150 mins after
+        TRUE ~ target_time + 20*60  # 20 mins after for night
+      )) %>%
+    
+    # Keep only fixes within the defined interval
+    filter(datetime >= lower_bound & datetime <= upper_bound) %>%
     group_by(date, target) %>%
-    slice_min(diff_mins, with_ties = FALSE) %>%
+    slice_min(abs(as.numeric(difftime(datetime, target_time, units = "mins"))), 
+              with_ties = FALSE) %>%
     ungroup()
   
+
   # ensure all expected rows are present (fill with NA if no fix)
   final_complete <- grid %>%
-    left_join(final, by = c("date", "target", "target_time"))
-  
-  
-  #remove rows with 0's from the lat and lon
-  #tagdata <- tagdata[which(tagdata$lon != 0),]
-  
-  #match times to get lons and lats at each time for that individual
-  #lon <- tagdata$lon[match(ts, tagdata$datetime)]
-  #lat <- tagdata$lat[match(ts, tagdata$datetime)]
+    left_join(matched, by = c("date", "target", "target_time"))
   
   lon <- final_complete$lon[match(ts, final_complete$target_time)]
   lat <- final_complete$lat[match(ts, final_complete$target_time)]
@@ -241,7 +234,6 @@ for(i in 1:length(all_files)){
   ys[i,] <- unlist(map(utm_i$geometry,2))
   
 }
-
 
 #removing the 0's which were converted to eastings and northings and should be replaced with NA
 xs[xs < 0] <- NA
@@ -270,8 +262,8 @@ ggplot(presence_long, aes(x = month, y = individual, fill = factor(present))) +
 
 
 setwd("C:/Users/egrout/Dropbox/lion/data/processed/")
-save(list=c('xs','ys','ts'), file = 'allnamib_xy_2hour_level1.RData')
-save(list=c('lats','lons','ts'), file = 'allnamib_latlon_2hour_level1.RData') 
+save(list=c('xs','ys','ts'), file = 'allnamib_xy_2hour_level2.RData')
+save(list=c('lats','lons','ts'), file = 'allnamib_latlon_2hour_level2.RData') 
 
 
 #put age categories by year of birth
@@ -299,7 +291,7 @@ all_ids$color[which(all_ids$yob == '2018' & all_ids$sex == 'Male')] <- '#B7DDBA'
 all_ids$color[which(all_ids$yob == '2019' & all_ids$sex == 'Male')] <- '#D5F0D7'
 all_ids$color[which(all_ids$yob == '2020' & all_ids$sex == 'Male')] <- '#E5F5E0'
 
-save(all_ids, file = 'allnamib_ids.RData')
+save(all_ids, file = 'allnamib_ids_V2.RData')
 
 
 
@@ -513,8 +505,12 @@ coverage_df <- coverage_df %>%
   left_join(all_ids %>% select(name, pride_id),
             by = c("individual" = "name"))
 
+#make a row for the individuals that have multiple prides associated, so can plot them with those groups in g5
+coverage_expanded <- coverage_df %>%
+  separate_rows(pride_id, sep = "-")
+
 # Plot with faceting by pride
-g5 <- ggplot(coverage_df, aes(x = month_year, y = individual, fill = n_fixes)) +
+g5 <- ggplot(coverage_expanded, aes(x = month_year, y = individual, fill = n_fixes)) +
   geom_tile(color = "white") +
   scale_fill_gradient(low = "white", high = "purple") +
   theme_classic() +
@@ -530,7 +526,7 @@ g5 <- ggplot(coverage_df, aes(x = month_year, y = individual, fill = n_fixes)) +
 
 
 ggsave(filename = paste0(plot_dir, "processeddata_bypride.png"),
-       plot = g5, width = 20, height = 12, dpi = 300)
+       plot = g5, width = 20, height = 13, dpi = 300)
 
 
 
@@ -550,6 +546,6 @@ all_ids <- all_ids2[match(allNames, all_ids2$name), ]
 
 rownames(all_ids) <- 1:nrow(all_ids)
 
-save(all_ids, file = 'allnamib_ids_withdod.RData')
+save(all_ids, file = 'allnamib_ids_withdod_V2.RData')
 
 

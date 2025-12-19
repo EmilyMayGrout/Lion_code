@@ -11,7 +11,7 @@ indir <-"../data/raw/gps/"
 outdir <- "../../processed/"
 metadatadir <-  "../data/raw/metadata/"
 
-setwd(indir)
+#setwd(indir)
 
 #load in the Rda file - dataframe called lion_df
 load("C:/Users/egrout/Dropbox/lion/data/raw/lion_df_00_data_set_up.Rda")
@@ -91,11 +91,9 @@ for(i in allNames){
 firsttime <- as.POSIXct('2023-05-04 00:00', tz = 'UTC')
 lasttime <-  as.POSIXct('2025-04-12 12:00', tz = 'UTC')
 
-
-#first make list of 10 min intervals then remove the times overnight
 ts <- seq.POSIXt(from = firsttime, to = lasttime,  by = '15 min')
 
-#making a list of all individuals in presedente
+
 all_files <- sort(list.files())
 
 lats <- lons <- xs <- ys <- matrix(NA, nrow = length(all_files), ncol = length(ts))

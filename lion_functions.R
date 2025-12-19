@@ -566,4 +566,48 @@ compute_dyadic_metrics <- function(data) {
 
 
 
+#function for making a matrix with the same xs/ys dimensions for each group and assinging whether for that individual for that time, whether the individual had data or whether they had died. This is to handle finding periods in the datasets when all individuals that were alive, were tracked.
+
+mask_after_death_with_presence <- function(xs, ys, ts, id_info) {
+  n_inds <- nrow(xs)
+  n_times <- ncol(xs)
+  
+  # initialize presence matrix: 1 = data present, 0 = missing, NA = after death
+  presence <- matrix(NA, nrow = n_inds, ncol = n_times)
+  
+  for (i in seq_len(n_inds)) {
+    dod_i <- id_info$DOD_clean[i]
+    known_i <- id_info$known[i]
+    
+    # initial 1 for non-NA, 0 for NA
+    presence[i, ] <- ifelse(!is.na(xs[i, ]), 1, 0)
+    
+    if (isTRUE(known_i) && !is.na(dod_i)) {
+      # only mask after death if DOD is within ts range
+      if (dod_i <= max(ts, na.rm = TRUE)) {
+        dod_idx <- which.min(abs(difftime(ts, dod_i, units = "secs")))
+        presence[i, dod_idx:n_times] <- NA
+      }
+      # else leave as-is (no data yet after DOD)
+      
+    } else if (identical(known_i, FALSE)) {
+      # unknown DOD but dead: mask everything after last recorded fix
+      last_fix <- max(which(!is.na(xs[i, ])), na.rm = TRUE)
+      if (is.finite(last_fix)) {
+        presence[i, last_fix:n_times] <- NA
+      }
+    }
+  }
+  
+  # number of individuals tracked at each time
+  n_tracked <- colSums(presence == 1, na.rm = TRUE)
+  
+  return(list(
+    presence = presence,
+    n_tracked = n_tracked
+  ))
+}
+
+
+
 
