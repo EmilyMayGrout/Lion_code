@@ -326,22 +326,20 @@ rm('monthly_data', 'presence', 'presence_long', 'df', 'data_prop', 'data_presenc
 
 
 
-
-
-
-
-
-
-
-
 #---------------------------------------------------------
 #now we have the dates where all inds had day and night data for each group separately, going through each group, extracting the 2 week subsampled data for all inds (then will do it as though one was collared after this) - only for dates with day and night data
 
 
-#making large for loop to run the same analyses across the different day subsampling
-#assume they are observed at 10am UTC time (midday 12)
-hour <- " 10:00:00"
+#making large for loop to run the same analyses across the different time subsampling
 
+time <- " 06:00:00"
+
+hour_observed <- c(" 06:00:00", " 10:00:00", " 14:00:00") #intentional spaces here
+
+for(time in hour_observed){
+
+hour_num <- as.numeric(substr(trimws(time), 1, 2))
+  
 # Make empty dataframe for the subsampled data
 sub_df <- data.frame(group_i = character(),
                      focal_ind = character(),
@@ -365,22 +363,14 @@ for(group_i in names(group_matrices)){
   #convert string back to a date format to get the 2 week times when all that had data were tracked
   dates <- as.Date(strsplit(dates_str, ",\\s*")[[1]])
   
-  # #go though each start date option
-  # first_date <- dates[1:14]
-  # 
-  # for (date in seq_along(first_date)) {
-  #   
-  # 
-    
-  #dates_2week <- dates[seq(date, length(dates), 14)]
-  sub_times <- as.POSIXct(paste0(dates, hour), tz = "UTC", format = "%Y-%m-%d %H:%M:%OS")
+  sub_times <- as.POSIXct(paste0(dates, time), tz = "UTC", format = "%Y-%m-%d %H:%M:%OS")
   
-  #get the xs and ys for the 10am subset each day
+  #get the xs and ys for the time subset each day
   sub_idx <- which(ts %in% sub_times)
-  xs_10am_groupi <- group$xs[,sub_idx]
-  ys_10am_groupi <- group$ys[,sub_idx]
+  xs_groupi <- group$xs[,sub_idx]
+  ys_groupi <- group$ys[,sub_idx]
   
-  subgroup_data_group_i <- get_subgroup_data(xs_10am_groupi, ys_10am_groupi, R)
+  subgroup_data_group_i <- get_subgroup_data(xs_groupi, ys_groupi, R)
   
   ff_net_all <- matrix(NA, nrow = n_inds_i, ncol = n_inds_i)
   
@@ -398,7 +388,7 @@ for(group_i in names(group_matrices)){
   }
   
   diag(ff_net_all) <- NA
-  visualize_lion_network(ff_net_all, group$id_info)
+  #visualize_lion_network(ff_net_all, group$id_info)
 
 
 
@@ -541,15 +531,19 @@ focal_matrices <- list()
 
 for(group_i in names(subgroup_matrices)){
   
+  for (date in names(subgroup_matrices[[group_i]])){
+  
+    date_i <- as.Date(date)
+    
   #get group for correct plotting of IDs in matrix later
   group <- group_matrices[[group_i]]
   
-  sub_df_i <- sub_df[sub_df$group_i == group_i,]
-  sub_df_i$time <- as_hms(sub_df_i$datetime)
+  #sub_df_i <- sub_df[sub_df$group_i == group_i,]
+  #sub_df_i$time <- as_hms(sub_df_i$datetime)
   n_inds_i <- nrow(group$xs) #cant do length as sometimes there is an ind missing data
   names_inds_i <- group$ids
   
-  subgroup_matrices_i <- subgroup_matrices[[group_i]]
+  subgroup_matrices_i <- subgroup_matrices[[group_i]][[date]]
   
   if(n_inds_i == 1) next
 
@@ -586,34 +580,32 @@ for(focal in names(subgroup_matrices_i)){
   #ffnet_reorder <- ff_net_matrix[new_order, new_order]
   
   # Store in list, named by focal individual
-  focal_matrices[[group_i]][[focal]] <- ff_net_matrix
+  focal_matrices[[group_i]][[date]][[focal]] <- ff_net_matrix
   
-  png(height = 400, width = 800, units = 'px', filename = paste0(plot_dir,'subgroup_network_focal_', focal, '-', group_i, ' ', days, '-days.png'))
+  # png(height = 400, width = 800, units = 'px', filename = paste0(plot_dir,'subgroup_network_focal_', focal, '-', group_i, ' 14-days ', date_i, '.png'))
+  # 
+  # par(mfrow = c(1, 2))
+  # visualize_lion_network(ff_net_matrix, group$id_info)
+  # mtext(group_i,  cex = 2)
+  # 
+  # # Remove the focal individual from comparison
+  # values <- ff_net_matrix[iter_num, -iter_num]
+  # names <- group$id_info$name[-iter_num]
+  # 
+  # bar_mids <- barplot(values, col = "slateblue",
+  #                     main = paste("Proportion of Time in Subgroup with", focal),
+  #                     ylim = c(0, 1), xaxt = "n", cex.axis = 1.5)
+  # 
+  # # Add correct axis labels at the bar midpoints
+  # axis(1, at = bar_mids, labels = names, las = 2, cex.axis = 1.5)
   
-  par(mfrow = c(1, 2))
-  visualize_lion_network(ff_net_matrix, group$id_info)
-  mtext(group_i,  cex = 2)
-  
-  # Remove the focal individual from comparison
-  values <- ff_net_matrix[iter_num, -iter_num]
-  names <- group$id_info$name[-iter_num]
-  
-  bar_mids <- barplot(values, col = "slateblue",
-                      main = paste("Proportion of Time in Subgroup with", focal),
-                      ylim = c(0, 1), xaxt = "n", cex.axis = 1.5)
-  
-  # Add correct axis labels at the bar midpoints
-  axis(1, at = bar_mids, labels = names, las = 2, cex.axis = 1.5)
-  
-  dev.off()
+  #dev.off()
+
 }
-}
+  }
+  }
 
 
-
-
-
-  
 
 #----------------------------------------------------------------------------
 
@@ -621,11 +613,15 @@ for(focal in names(subgroup_matrices_i)){
 
 #----------------------------------------------------------------------------
 
-
-
 #compare which focals have closest result to the total dataset
 
 for(group_i in names(group_matrices)){
+  
+  spearman_long <- data.frame(start_date = as.Date(character()), 
+                              individual = character(), 
+                              spearman = numeric(), 
+                              stringsAsFactors = FALSE )
+  
   
   group <- group_matrices[[group_i]]
   n_inds_i <- nrow(group$xs)
@@ -668,167 +664,124 @@ spearman_scores[] <- NA
 
 
 #going though all inds in each group to see whether is focal data for the subset matrices, if not, replace with NA
+
 for (ind in group_matrices[[group_i]]$ids) {
   
-  # check if focal matrix exists for this individual
-  if (is.null(focal_matrices[[group_i]][[ind]])) {
+  # for each date for that individual as the focal
+  for (date in names(focal_matrices[[group_i]])) {
     
-    # create empty NA matrix
-    focal_matrices[[group_i]][[ind]] <- matrix(
-      NA,
-      nrow = n_inds_i,
-      ncol = n_inds_i,
-      dimnames = list(group_matrices[[group_i]]$ids,
-                      group_matrices[[group_i]]$ids)
+    date_i <- as.Date(date)
+    
+    #to know which iteration is being run
+    iter_num <- match(date, names(focal_matrices[[group_i]]))
+    
+    # check if focal matrix exists
+    focal_mat <- focal_matrices[[group_i]][[date]][[ind]]
+    
+    #make empty matrix if focal_mat doesn't exist
+    if (is.null(focal_mat)) {
+      focal_vec <- rep(NA, n_inds_i * (n_inds_i - 1) / 2)
+    } else {
+      focal_vec <- get_upper_triangle(focal_mat)
+    }
+    
+    # valid dyads
+    valid_idx <- !is.na(real_vector) & !is.na(focal_vec)
+    
+    # Spearman
+    if (sum(valid_idx) >= 2) {
+      rho <- cor(real_vector[valid_idx],
+                 focal_vec[valid_idx],
+                 method = "spearman")
+    } else {
+      rho <- NA
+    }
+    
+    # append one row per individual per start date option
+    spearman_long <- rbind(
+      spearman_long,
+      data.frame(
+        start_date = date_i,
+        individual = ind,
+        spearman   = rho,
+        stringsAsFactors = FALSE
+      )
     )
-    
-    focal_vec <- rep(NA, n_inds_i * (n_inds_i - 1) / 2)
-    
-  } else {
-  
-  
-  focal_vec <- get_upper_triangle(focal_matrices[[group_i]][[ind]])
-  }
-  
-  # Ensure comparison only for dyads with valid values in both
-  valid_idx <- !is.na(real_vector) & !is.na(focal_vec)
-  
-  # Spearman correlation
-  if (sum(valid_idx) >= 2) {
-    spearman_scores[ind] <- cor(real_vector[valid_idx], focal_vec[valid_idx], method = "spearman")
-  
-  } else {
-    spearman_scores[ind] <- NA  # not enough valid points
   }
 }
 
-spearman_long <- rbind(
-  spearman_long,
-  data.frame(
-    start_date = date,
-    individual = names(spearman_scores),
-    spearman   = spearman_scores
-  ))
+spearman_long_clean <- spearman_long[!is.na(spearman_long$spearman), ]
 
-if (nrow(spearman_long) == 0) {
-  message("No Spearman results for group ", group_i, " (", days, "-day)")
+
+if(nrow(spearman_long_clean) == 0){
+  message("No Spearman results for group ", group_i)
   next
 }
 
-# summarise spearman across start dates
 spearman_summary <- aggregate(
   spearman ~ individual,
   data = spearman_long,
   FUN = function(x) {
-    c(mean = mean(x, na.rm = TRUE),
-      sd   = if (sum(!is.na(x)) >= 2) sd(x, na.rm = TRUE) else NA)
+    c(mean = mean(x, na.rm = TRUE), 
+      sd = if (sum(!is.na(x)) >= 2) sd(x, na.rm = TRUE) else NA
+    )
   }
 )
 
-# unpack the matrix column
 spearman_summary$mean_spearman <- spearman_summary$spearman[, "mean"]
 spearman_summary$sd_spearman   <- spearman_summary$spearman[, "sd"]
 spearman_summary$spearman <- NULL
 
-no_data_inds <- spearman_sd$individual[is.na(spearman_sd$sd_spearman)]
+# remove individuals with completely missing means
+plot_df <- spearman_summary[!is.na(spearman_summary$mean_spearman), ]
 
-if (length(no_data_inds) > 0) {
-  message(
-    "Individuals with insufficient data for SD (",
-    group_i, "): ",
-    paste(no_data_inds, collapse = ", ")
-  )
+if (nrow(plot_df) == 0) {
+  message("No data to plot for group ", group_i)
+  next
 }
 
-plot_df <- spearman_sd[!is.na(spearman_sd$sd_spearman), ]
+#if(nrow(plot_df) == 0) next
 
-if (nrow(plot_df) == 0) next 
+# order by mean spearman - optional for tidier plot
+ord <- order(plot_df$mean_spearman, decreasing = TRUE)
+plot_df <- plot_df[ord, ]
 
-#colnames(spearman_sd)[2] <- "sd_spearman"
+# open device
+png(height = 950, width  = 2000, units  = "px", res = 180, filename = paste0(plot_dir, "spearman_mean_sd_", group_i, hour_num, ".png"))
 
-
-
-png(height = 450, width = 1000, units = 'px', filename = paste0(plot_dir, 'spearman_scores for ', group_i, " - ", days,  ' day subsampling.png'))
+par(mar = c(5, 2, 4, 2))
 
 par(mfrow = c(1, 2))
-
 visualize_lion_network(total_matrix, group$id_info)
+mtext(group_i,  cex = 2)
 
-par(mar = c(15,5,4,5))
-#bar_mids <- barplot(spearman_scores,
-                    # names.arg = paste("Focal", seq_along(focal_matrices[[group_i]])),
-                    # col = "slateblue",
-                    # ylim = c(0, 1),
-                    # main = paste0("Spearman rank correlation for " ,group_i, " group ", days, "-day interval"),
-                    # ylab = "Rank", xaxt = "n")
+x_vals <- 1:nrow(plot_df)
 
-# Add correct axis labels at the bar midpoints
-#axis(1, at = bar_mids, labels = group$id_info$name, las = 2, cex.axis = 1)
+plot(x_vals, plot_df$mean_spearman, ylim=c(-1,1), pch=19, cex=2, col="steelblue", xaxt="n",
+     xlab="", ylab="Mean Spearman (± SD)", main=paste0("Spearman ranks to true network for \n 2 week observation at ", hour_num))
+axis(1, at=x_vals, labels=plot_df$individual, las=2)
 
-
-bar_mids <- barplot(
-  spearman_summary$mean_spearman,
-  names.arg = spearman_summary$individual,
-  ylim = c(-1, 1),
-  col = "steelblue",
-  ylab = "Mean Spearman rank (± SD)",
-  main = paste0(
-    "Mean Spearman rank vs full network\n",
-    group_i, " (", days, "-day subsampling)"
-  ),
-  las = 2
-)
-
-# add SD error bars
-with(spearman_summary, {
-  ok <- !is.na(sd_spearman)
-  
-  arrows(
-    x0 = bar_mids[ok],
-    y0 = mean_spearman[ok] - sd_spearman[ok],
-    x1 = bar_mids[ok],
-    y1 = mean_spearman[ok] + sd_spearman[ok],
-    angle = 90,
-    code = 3,
-    length = 0.05,
-    lwd = 2
-  )
-})
-
-abline(h = 0, lty = 2, col = "grey40")
+# SD error bars
+arrows(x0=x_vals, y0=plot_df$mean_spearman - plot_df$sd_spearman,
+       x1=x_vals, y1=plot_df$mean_spearman + plot_df$sd_spearman,
+       angle=90, code=3, length=0.1, lwd=2)
+abline(h=0, lty=2, col="grey40")
 
 dev.off()
-}
-}
-
 
 }
-#------------------------------------------------
-
-
-
+}
 
 
 #------------------------------------------------
 
-#quantify the variance of subgroup size and number of subgroups in start date
-#boxplot(sub_df$sub_count ~ as.numeric(sub_df$month))
+#------------------------------------------------
 
-#ggplot(sub_df, aes(month, sub_count, fill = as.factor(focal_ind)))+
-#  geom_boxplot()
+#At what point does subsampling lose the total_social associations - i.e if going more regularly, say every week, will that make a big difference to the quality of the data?
 
 
-
-
-
-
-
-
-
-
-
-
-
+#how does day time associations represent night time associations?
+#measure the extent of subgrouping/being together across time of year - seasonal shifts
 
 
 
